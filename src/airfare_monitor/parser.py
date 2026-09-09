@@ -318,13 +318,16 @@ def _eligible_itinerary(
     item: dict[str, Any], leg: LegConfig
 ) -> tuple[list[Segment], int | None, int | None, SeatAvailability | None] | None:
     segments = [_parse_segment(raw, leg) for raw in _segment_dicts(item)]
-    search_origin = str(
-        _first(item, "depCityCode", "journey.depCityCode", default=segments[0].origin_airport_iata)
-    ).upper()
-    search_destination = str(
-        _first(item, "arrCityCode", "journey.arrCityCode", default=segments[-1].destination_airport_iata)
-    ).upper()
-    if search_origin != leg.origin_airport_iata or search_destination != leg.destination_airport_iata:
+    # Qunar's journey-level depCityCode/arrCityCode can be city aggregate
+    # identifiers (for example SHA for every Shanghai airport). The desktop
+    # product stores a specific airport IATA, so eligibility must be decided
+    # from the actual first and last flight segments instead of those city
+    # labels. This also prevents a PVG result from being accepted for a route
+    # that explicitly selected SHA (Hongqiao).
+    if (
+        segments[0].origin_airport_iata != leg.origin_airport_iata
+        or segments[-1].destination_airport_iata != leg.destination_airport_iata
+    ):
         return None
     if segments[0].etd_local.date() != leg.departure_date:
         return None

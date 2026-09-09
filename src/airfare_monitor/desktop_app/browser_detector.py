@@ -1,0 +1,89 @@
+"""Locate installed Chrome or Edge without attaching to a daily browser profile."""
+
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+from pathlib import Path
+
+
+@dataclass(frozen=True, slots=True)
+class BrowserCandidate:
+    kind: str
+    path: Path
+    version: str | None
+
+
+class BrowserDetector:
+    _REGISTRY_NAMES = {
+        "chrome": "chrome.exe",
+        "edge": "msedge.exe",
+    }
+
+    def detect(self, *, preferred_path: str | Path | None = None) -> list[BrowserCandidate]:
+        found: list[BrowserCandidate] = []
+        seen: set[Path] = set()
+        candidates: list[tuple[str, Path]] = []
+        if preferred_path:
+            preferred = Path(preferred_path)
+            candidates.append((self._kind_for_path(preferred), preferred))
+        for kind in ("chrome", "edge"):
+            candidates.extend((kind, path) for path in self._registry_paths(kind))
+            candidates.extend((kind, path) for path in self._common_paths(kind))
+        for kind, path in candidates:
+            resolved = path.expanduser()
+            if not resolved.is_file() or resolved in seen:
+                continue
+            found.append(BrowserCandidate(kind=kind, path=resolved, version=self._registry_version(kind)))
+            seen.add(resolved)
+        return found
+
+    @staticmethod
+    def _kind_for_path(path: Path) -> str:
+        return "edge" if "edge" in path.name.lower() else "chrome"
+
+    def _registry_paths(self, kind: str) -> list[Path]:
+        if os.name != "nt":
+            return []
+        try:
+            import winreg
+        except ImportError:
+            return []
+        paths: list[Path] = []
+        executable = self._REGISTRY_NAMES[kind]
+        for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+            try:
+                with winreg.OpenKey(hive, rf"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{executable}") as key:
+                    value, _ = winreg.QueryValueEx(key, None)
+                    paths.append(Path(value))
+            except OSError:
+                continue
+        return paths
+
+    def _registry_version(self, kind: str) -> str | None:
+        if os.name != "nt":
+            return None
+        try:
+            import winreg
+        except ImportError:
+            return None
+        product_key = "Google\\Chrome\\BLBeacon" if kind == "chrome" else "Microsoft\\Edge\\BLBeacon"
+        for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+            try:
+                with winreg.OpenKey(hive, rf"SOFTWARE\{product_key}") as key:
+                    value, _ = winreg.QueryValueEx(key, "version")
+                    return str(value)
+            except OSError:
+                continue
+        return None
+
+    @staticmethod
+    def _common_paths(kind: str) -> list[Path]:
+        executable = "chrome.exe" if kind == "chrome" else "msedge.exe"
+        product = "Google\\Chrome" if kind == "chrome" else "Microsoft\\Edge"
+        roots = [
+            os.environ.get("PROGRAMFILES"),
+            os.environ.get("PROGRAMFILES(X86)"),
+            os.environ.get("LOCALAPPDATA"),
+        ]
+        return [Path(root) / product / "Application" / executable for root in roots if root]

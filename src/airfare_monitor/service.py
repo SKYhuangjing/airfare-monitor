@@ -6,10 +6,10 @@ import logging
 import time
 import uuid
 from datetime import datetime, timedelta
-from typing import Callable
+from typing import Callable, Protocol
 
 from .collector import QunarBrowserSession
-from .config import AppSettings
+from .config import AppSettings, validate_enabled_leg_limit
 from .errors import CollectionError, ManualAttentionRequired
 from .excel_report import generate_workbook
 from .mail import send_report
@@ -17,6 +17,27 @@ from .models import LegConfig, LegResult, LegStatus, PreferredPriceReference, Ru
 from .storage import SQLiteStore
 
 logger = logging.getLogger(__name__)
+
+
+class MonitorEventSink(Protocol):
+    def on_cycle_started(self, run_id: str, started_at: datetime, total: int) -> None: ...
+    def on_leg_started(self, leg: LegConfig, index: int, total: int) -> None: ...
+    def on_leg_finished(self, result: LegResult, index: int, total: int) -> None: ...
+    def on_cycle_finished(self, report: RunReport, workbook: object) -> None: ...
+
+
+class NullMonitorEventSink:
+    def on_cycle_started(self, run_id: str, started_at: datetime, total: int) -> None:
+        pass
+
+    def on_leg_started(self, leg: LegConfig, index: int, total: int) -> None:
+        pass
+
+    def on_leg_finished(self, result: LegResult, index: int, total: int) -> None:
+        pass
+
+    def on_cycle_finished(self, report: RunReport, workbook: object) -> None:
+        pass
 
 
 class MonitorService:
@@ -29,13 +50,16 @@ class MonitorService:
         browser: QunarBrowserSession | None = None,
         sleep: Callable[[float], None] = time.sleep,
         now: Callable[[], datetime] = datetime.now,
+        event_sink: MonitorEventSink | None = None,
     ):
+        validate_enabled_leg_limit(legs)
         self.legs = [leg for leg in legs if leg.enabled]
         self.settings = settings
         self.store = store or SQLiteStore(settings.storage.sqlite_path)
         self.browser = browser or QunarBrowserSession(settings.browser)
         self.sleep = sleep
         self.now = now
+        self.event_sink = event_sink or NullMonitorEventSink()
         self.consecutive_failures = 0
 
     def close(self) -> None:
@@ -156,12 +180,15 @@ class MonitorService:
         self.store.initialize()
         started_at = self.now()
         run_id = f"{started_at:%Y%m%dT%H%M%S}-{uuid.uuid4().hex[:8]}"
+        self._notify(lambda: self.event_sink.on_cycle_started(run_id, started_at, len(self.legs)))
         results: list[LegResult] = []
-        for leg in self.legs:
+        for index, leg in enumerate(self.legs, start=1):
+            self._notify(lambda leg=leg, index=index: self.event_sink.on_leg_started(leg, index, len(self.legs)))
             previous = self.store.previous_minimum(leg.id, before=started_at)
             result = self._collect_with_retry(leg)
             result.previous_min_total_cny = previous
             results.append(result)
+            self._notify(lambda result=result, index=index: self.event_sink.on_leg_finished(result, index, len(self.legs)))
 
         confirmed_ids = self._confirm_thresholds(results)
         self._attach_preferred_price_references(results, before=started_at)
@@ -181,4 +208,12 @@ class MonitorService:
         self.store.prune_raw_responses(self.settings.storage.keep_raw_response_days, now=report.finished_at)
         if send_email:
             send_report(report, self.settings.mail, workbook)
+        self._notify(lambda: self.event_sink.on_cycle_finished(report, workbook))
         return report, workbook
+
+    @staticmethod
+    def _notify(callback: Callable[[], None]) -> None:
+        try:
+            callback()
+        except Exception:
+            logger.exception("监控事件回调失败，已隔离，不影响采集")

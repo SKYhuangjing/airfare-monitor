@@ -6,6 +6,7 @@ import html
 import os
 import smtplib
 import ssl
+from dataclasses import dataclass, field
 from datetime import timedelta
 from email.message import EmailMessage
 from pathlib import Path
@@ -13,6 +14,30 @@ from pathlib import Path
 from .config import MailSettings
 from .errors import ConfigError
 from .models import FlightSnapshot, ItinerarySnapshot, LegResult, PreferredPriceReference, RunReport, RunStatus
+
+
+@dataclass(frozen=True, slots=True)
+class SmtpCredentials:
+    username: str
+    password: str = field(repr=False)
+    sender: str = ""
+    recipients: tuple[str, ...] = ()
+
+
+class SmtpSender:
+    def send(self, message: EmailMessage, settings: MailSettings, credentials: SmtpCredentials) -> None:
+        context = ssl.create_default_context()
+        if settings.security == "ssl":
+            with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port, context=context, timeout=30) as client:
+                client.login(credentials.username, credentials.password)
+                client.send_message(message)
+        else:
+            with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30) as client:
+                client.ehlo()
+                client.starttls(context=context)
+                client.ehlo()
+                client.login(credentials.username, credentials.password)
+                client.send_message(message)
 
 
 def _price(value: object) -> str:
@@ -410,16 +435,18 @@ def send_report(report: RunReport, settings: MailSettings, attachment: Path | No
     recipients = [item.strip() for item in _required_env(settings.recipients_env).split(",") if item.strip()]
     if not recipients:
         raise ConfigError(f"环境变量 {settings.recipients_env} 未包含有效收件地址")
-    message = build_message(report, settings, sender=sender, recipients=recipients, attachment=attachment)
-    context = ssl.create_default_context()
-    if settings.security == "ssl":
-        with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port, context=context, timeout=30) as client:
-            client.login(username, password)
-            client.send_message(message)
-    else:
-        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30) as client:
-            client.ehlo()
-            client.starttls(context=context)
-            client.ehlo()
-            client.login(username, password)
-            client.send_message(message)
+    credentials = SmtpCredentials(username=username, password=password, sender=sender, recipients=tuple(recipients))
+    message = build_message(report, settings, sender=credentials.sender, recipients=list(credentials.recipients), attachment=attachment)
+    SmtpSender().send(message, settings, credentials)
+
+
+def send_test_message(settings: MailSettings, credentials: SmtpCredentials) -> None:
+    """Explicit GUI action: send a short test only after the user requests it."""
+    if not credentials.sender or not credentials.recipients:
+        raise ConfigError("测试邮件需要发件人和至少一个收件人")
+    message = EmailMessage()
+    message["Subject"] = "[航价守望] 邮件通知测试"
+    message["From"] = credentials.sender
+    message["To"] = ", ".join(credentials.recipients)
+    message.set_content("航价守望 SMTP 测试成功。此邮件由用户在设置页主动发起。")
+    SmtpSender().send(message, settings, credentials)

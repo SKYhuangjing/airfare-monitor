@@ -18,6 +18,7 @@ from .models import EtdWindow, LegConfig, PreferredSchedule
 _IATA_RE = re.compile(r"^[A-Z]{3}$")
 _CABIN_CLASSES = {"economy", "premium_economy", "business", "first"}
 _MARKETS = {"auto", "domestic", "international"}
+MAX_ENABLED_LEGS = 10
 
 
 def load_local_env(path: str | Path, *, override: bool = False) -> None:
@@ -200,10 +201,26 @@ def _parse_decimal(value: Any, path: str) -> Decimal:
     return parsed
 
 
-def load_routes(path: str | Path) -> list[LegConfig]:
+def validate_enabled_leg_limit(legs: list[LegConfig]) -> None:
+    """Reject configurations that would put crawler-like load on one device."""
+    enabled_count = sum(leg.enabled for leg in legs)
+    if enabled_count > MAX_ENABLED_LEGS:
+        raise ConfigError(f"每台设备最多同时启用 {MAX_ENABLED_LEGS} 个监控航程")
+
+
+def load_routes(path: str | Path, *, allow_empty: bool = False) -> list[LegConfig]:
+    """Load routes from YAML.
+
+    Desktop first launch is allowed to have no routes.  The CLI retains the
+    historical non-empty requirement by using the default ``allow_empty=False``.
+    """
     root = _load_yaml(Path(path))
     raw_legs = _required(root, "legs", "routes")
-    if not isinstance(raw_legs, list) or not raw_legs:
+    if not isinstance(raw_legs, list):
+        raise ConfigError("routes.legs 必须是列表")
+    if not raw_legs:
+        if allow_empty:
+            return []
         raise ConfigError("routes.legs 必须是非空列表")
 
     legs: list[LegConfig] = []
@@ -372,7 +389,8 @@ def load_routes(path: str | Path) -> list[LegConfig]:
                 return_max_layover_minutes=return_max_layover_minutes,
             )
         )
-    if not any(leg.enabled for leg in legs):
+    validate_enabled_leg_limit(legs)
+    if not allow_empty and not any(leg.enabled for leg in legs):
         raise ConfigError("至少需要启用一个航程")
     return legs
 

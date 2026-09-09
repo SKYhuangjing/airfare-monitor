@@ -117,6 +117,19 @@ CREATE TABLE IF NOT EXISTS raw_responses (
     PRIMARY KEY (run_id, leg_id),
     FOREIGN KEY (run_id, leg_id) REFERENCES leg_results(run_id, leg_id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS app_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    occurred_at TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    leg_id TEXT,
+    message TEXT NOT NULL,
+    details_json TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_app_events_recent
+ON app_events (occurred_at DESC);
 """
 
 
@@ -414,6 +427,70 @@ class SQLiteStore:
                    WHERE captured_at >= ?
                    ORDER BY captured_at, leg_id""",
                 (_iso(since),),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def latest_run(self) -> dict[str, Any] | None:
+        with closing(self.connect()) as connection:
+            row = connection.execute(
+                "SELECT run_id, started_at, finished_at, status, threshold_confirmed_count "
+                "FROM collection_runs ORDER BY started_at DESC LIMIT 1"
+            ).fetchone()
+        return dict(row) if row else None
+
+    def recent_runs(self, *, limit: int = 20) -> list[dict[str, Any]]:
+        with closing(self.connect()) as connection:
+            rows = connection.execute(
+                "SELECT run_id, started_at, finished_at, status, threshold_confirmed_count "
+                "FROM collection_runs ORDER BY started_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def latest_leg_results(self, leg_ids: list[str]) -> list[dict[str, Any]]:
+        if not leg_ids:
+            return []
+        placeholders = ",".join("?" for _ in leg_ids)
+        sql = f"""
+            SELECT current.* FROM leg_results current
+            JOIN (
+                SELECT leg_id, MAX(captured_at) AS captured_at
+                FROM leg_results WHERE leg_id IN ({placeholders}) GROUP BY leg_id
+            ) latest ON latest.leg_id = current.leg_id AND latest.captured_at = current.captured_at
+            ORDER BY current.leg_id
+        """
+        with closing(self.connect()) as connection:
+            rows = connection.execute(sql, leg_ids).fetchall()
+        return [dict(row) for row in rows]
+
+    def leg_price_series(self, leg_id: str, *, since: datetime, max_points: int = 500) -> list[dict[str, Any]]:
+        with closing(self.connect()) as connection:
+            rows = connection.execute(
+                """SELECT captured_at, minimum_total_price_cny, status
+                   FROM leg_results WHERE leg_id = ? AND captured_at >= ?
+                   ORDER BY captured_at ASC LIMIT ?""",
+                (leg_id, _iso(since), max_points),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def record_app_event(
+        self, *, event_type: str, severity: str, message: str, leg_id: str | None = None, details: dict[str, Any] | None = None,
+        occurred_at: datetime | None = None,
+    ) -> None:
+        with closing(self.connect()) as connection:
+            with connection:
+                connection.execute(
+                    "INSERT INTO app_events (occurred_at, event_type, severity, leg_id, message, details_json) VALUES (?, ?, ?, ?, ?, ?)",
+                    (
+                        _iso(occurred_at or datetime.now()), event_type, severity, leg_id, message,
+                        json.dumps(details, ensure_ascii=False, separators=(",", ":")) if details else None,
+                    ),
+                )
+
+    def recent_app_events(self, *, limit: int = 30) -> list[dict[str, Any]]:
+        with closing(self.connect()) as connection:
+            rows = connection.execute(
+                "SELECT occurred_at, event_type, severity, leg_id, message FROM app_events ORDER BY id DESC LIMIT ?", (limit,)
             ).fetchall()
         return [dict(row) for row in rows]
 

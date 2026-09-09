@@ -1,0 +1,19 @@
+* { font-family: "Microsoft YaHei UI", "Segoe UI"; color: #102a56; }
+QMainWindow { background: #f5f8fc; }
+QWidget#sidebar { background: #ffffff; border-right: 1px solid #dce5f2; }
+QLabel#brand { color: #0b4ca8; font-size: 23px; font-weight: 700; padding: 18px 16px 4px 16px; }
+QLabel#tagline { color: #7690b3; padding: 0 16px 18px 16px; }
+QPushButton#navButton { text-align: left; border: 0; border-radius: 8px; padding: 11px 16px; margin: 2px 10px; font-size: 14px; }
+QPushButton#navButton:checked { background: #e8f1ff; color: #1265db; font-weight: 700; }
+QPushButton { border: 1px solid #cdd9e9; border-radius: 7px; background: #ffffff; padding: 8px 14px; }
+QPushButton:hover { background: #f2f7ff; }
+QPushButton#primary { background: #176be8; color: white; border: 0; font-weight: 700; }
+QPushButton#primary:hover { background: #0f59c7; }
+QFrame#card { background: white; border: 1px solid #e0e8f3; border-radius: 12px; }
+QLabel#pageTitle { font-size: 25px; font-weight: 700; }
+QLabel#muted { color: #7287a6; }
+QLineEdit, QDateEdit, QTimeEdit, QComboBox, QSpinBox { border: 1px solid #bdcce0; border-radius: 7px; padding: 8px; background: white; min-height: 20px; }
+QLineEdit:focus, QDateEdit:focus, QTimeEdit:focus, QComboBox:focus { border: 2px solid #176be8; }
+QTableWidget { background: white; border: 1px solid #e0e8f3; border-radius: 10px; gridline-color: #eef3f8; }
+QHeaderView::section { background: #f5f8fc; border: 0; padding: 9px; font-weight: 700; }
+QListWidget { border: 1px solid #d9e4f1; border-radius: 7px; background: white; }

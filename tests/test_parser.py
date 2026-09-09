@@ -167,7 +167,10 @@ class ParserTests(unittest.TestCase):
                 },
             }
         }
-        flights, _, observed, eligible = parse_completed_payload(actual_shape, leg(), datetime(2026, 8, 31, 12))
+        configured = replace(leg(), origin_airport_iata="PVG")
+        flights, _, observed, eligible = parse_completed_payload(
+            actual_shape, configured, datetime(2026, 8, 31, 12)
+        )
         self.assertEqual((observed, eligible), (1, 1))
         self.assertEqual(flights[0].origin_airport_iata, "PVG")
         self.assertEqual(flights[0].total_price_cny, Decimal("1450"))
@@ -233,6 +236,7 @@ class ParserTests(unittest.TestCase):
     def test_parses_round_trip_combination_total_and_both_directions(self):
         configured = replace(
             leg(),
+            origin_airport_iata="PVG",
             expected_total_price_cny=None,
             return_date=date(2026, 10, 3),
             return_etd_window=EtdWindow(time(12), time(23, 59)),
@@ -306,3 +310,37 @@ class ParserTests(unittest.TestCase):
         )
         self.assertEqual(filtered_count, 0)
         self.assertEqual(filtered, [])
+
+    def test_rejects_other_airport_even_when_journey_city_code_matches(self):
+        value = {
+            "result": {
+                "ctrlInfo": {"completed": True},
+                "flightPrices": {
+                    "MU001": {
+                        "journey": {
+                            "depCityCode": "SHA",
+                            "arrCityCode": "KUL",
+                            "trips": [
+                                {
+                                    "flightSegments": [
+                                        segment(
+                                            "MU001",
+                                            "PVG",
+                                            "KUL",
+                                            "2026-09-27 10:00",
+                                            "2026-09-27 15:30",
+                                        )
+                                    ]
+                                }
+                            ],
+                        },
+                        "price": {"lowTotalPrice": 900, "currencyCode": "CNY"},
+                    }
+                },
+            }
+        }
+        flights, _, observed, eligible = parse_completed_payload(
+            value, leg(), datetime(2026, 8, 31, 12)
+        )
+        self.assertEqual((observed, eligible), (1, 0))
+        self.assertEqual(flights, [])
