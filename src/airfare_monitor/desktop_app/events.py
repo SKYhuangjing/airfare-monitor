@@ -5,8 +5,32 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
+from enum import StrEnum
 
 from ..models import LegConfig, LegResult, RunReport
+
+
+class MonitorCommandType(StrEnum):
+    RUN_NOW = "run_now"
+    PAUSE = "pause"
+    RESUME = "resume"
+    RETRY_LEG = "retry_leg"
+    APPLY_SETTINGS = "apply_settings"
+    SHUTDOWN = "shutdown"
+
+
+@dataclass(frozen=True, slots=True)
+class MonitorCommand:
+    kind: MonitorCommandType
+    leg_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class CoordinatorSnapshot:
+    state: str
+    paused: bool
+    running: bool
+    next_run_at: datetime | None
 
 
 @dataclass(frozen=True, slots=True)

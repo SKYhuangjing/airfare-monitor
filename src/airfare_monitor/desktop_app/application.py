@@ -36,6 +36,7 @@ def validate_ui_runtime(paths: AppPaths) -> str:
         BrowserDetector().detect(),
         on_run_now=lambda: None,
         history_store=SQLiteStore(paths.database_path),
+        outputs_dir=paths.outputs_dir,
     )
     window.close()
     return QGuiApplication.platformName()
@@ -46,6 +47,7 @@ def run_desktop(paths: AppPaths, *, start_hidden: bool = False) -> int:
     app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName("航价守望")
     app.setOrganizationName("AirfareMonitor")
+    app.setQuitOnLastWindowClosed(False)
     _apply_style(app, paths.resource_root)
     catalog = AirportCatalog.load(paths.resource_root / "airports.zh.json")
     controller = DesktopController(RouteRepository(paths.routes_path))
@@ -60,12 +62,13 @@ def run_desktop(paths: AppPaths, *, start_hidden: bool = False) -> int:
         BrowserDetector().detect(),
         on_run_now=coordinator.run_now,
         history_store=SQLiteStore(paths.database_path),
+        outputs_dir=paths.outputs_dir,
     )
     bridge = CoordinatorEventBridge(app)
     bridge.event_received.connect(window.handle_monitor_event, Qt.ConnectionType.QueuedConnection)
     coordinator.subscribe(bridge.publish)
     instance.set_activation_handler(window.activate)
-    tray = _create_tray(app, window)
+    tray = _create_tray(app, window, coordinator)
     window.runtime_status_changed.connect(lambda text: tray.setToolTip(f"航价守望 · {text}"))
     app.aboutToQuit.connect(coordinator.shutdown)
     app.aboutToQuit.connect(instance.close)
@@ -84,7 +87,7 @@ def _apply_style(app: QApplication, resource_root: Path) -> None:
         app.setStyleSheet(stylesheet.read_text(encoding="utf-8"))
 
 
-def _create_tray(app: QApplication, window: MainWindow) -> QSystemTrayIcon:
+def _create_tray(app: QApplication, window: MainWindow, coordinator: MonitorCoordinator) -> QSystemTrayIcon:
     icon = app.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
     tray = QSystemTrayIcon(icon, app)
     tray.setToolTip("航价守望 · 等待监控")
@@ -93,6 +96,26 @@ def _create_tray(app: QApplication, window: MainWindow) -> QSystemTrayIcon:
     open_action.triggered.connect(window.showNormal)
     run_action = menu.addAction("立即查询")
     run_action.triggered.connect(window._run_now)
+    pause_action = menu.addAction("暂停监控")
+    pause_action.setCheckable(True)
+
+    def toggle_pause(paused: bool) -> None:
+        if paused:
+            coordinator.pause()
+        else:
+            coordinator.resume()
+        pause_action.setText("继续监控" if paused else "暂停监控")
+
+    def sync_pause(paused: bool) -> None:
+        pause_action.blockSignals(True)
+        pause_action.setChecked(paused)
+        pause_action.setText("继续监控" if paused else "暂停监控")
+        pause_action.blockSignals(False)
+
+    pause_action.toggled.connect(toggle_pause)
+    window.monitor_paused_changed.connect(sync_pause)
+    report_action = menu.addAction("打开最新报告")
+    report_action.triggered.connect(window.open_latest_report)
     menu.addSeparator()
     quit_action = menu.addAction("退出并停止监控")
     quit_action.triggered.connect(app.quit)

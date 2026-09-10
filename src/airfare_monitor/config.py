@@ -406,6 +406,13 @@ def load_settings(path: str | Path, *, project_root: str | Path | None = None) -
     excel = _mapping(_required(raw, "excel", "settings"), "settings.excel")
     mail = _mapping(_required(raw, "mail", "settings"), "settings.mail")
 
+    interval_minutes = _positive_int(
+        _required(schedule, "interval_minutes", "settings.schedule"),
+        "settings.schedule.interval_minutes",
+    )
+    if interval_minutes < 30:
+        raise ConfigError("settings.schedule.interval_minutes 不得少于 30 分钟")
+
     security = _string(_required(mail, "security", "settings.mail"), "settings.mail.security").lower()
     if security not in {"ssl", "starttls"}:
         raise ConfigError("settings.mail.security 必须是 ssl 或 starttls")
@@ -417,9 +424,7 @@ def load_settings(path: str | Path, *, project_root: str | Path | None = None) -
     return AppSettings(
         schedule=ScheduleSettings(
             timezone=_string(_required(schedule, "timezone", "settings.schedule"), "settings.schedule.timezone"),
-            interval_minutes=_positive_int(
-                _required(schedule, "interval_minutes", "settings.schedule"), "settings.schedule.interval_minutes"
-            ),
+            interval_minutes=interval_minutes,
             jitter_seconds=_positive_int(
                 _required(schedule, "jitter_seconds", "settings.schedule"),
                 "settings.schedule.jitter_seconds",

@@ -28,13 +28,14 @@ class ProcessLock:
 
     def acquire(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        handle = self.path.open("a+b")
-        handle.seek(0)
-        if handle.read(1) == b"":
-            handle.seek(0)
-            handle.write(b"0")
-            handle.flush()
+        handle: IO[bytes] | None = None
         try:
+            handle = self.path.open("a+b")
+            handle.seek(0)
+            if handle.read(1) == b"":
+                handle.seek(0)
+                handle.write(b"0")
+                handle.flush()
             if os.name == "nt":
                 import msvcrt
 
@@ -45,8 +46,10 @@ class ProcessLock:
 
                 fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError as exc:
-            handle.close()
+            if handle is not None:
+                handle.close()
             raise AlreadyRunningError("已有监控进程持有运行锁") from exc
+        assert handle is not None
         self.handle = handle
 
     def release(self) -> None:

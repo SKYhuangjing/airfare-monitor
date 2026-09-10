@@ -4,11 +4,11 @@ from collections.abc import Callable
 from decimal import Decimal
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QAction
+from PySide6.QtCore import QUrl, Qt, Signal
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
-    QApplication, QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPushButton, QStackedWidget,
-    QStyle, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+    QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPushButton, QStackedWidget,
+    QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
 from ..config import MAX_ENABLED_LEGS
@@ -26,20 +26,24 @@ from .route_wizard import RouteWizard
 
 class MainWindow(QMainWindow):
     runtime_status_changed = Signal(str)
+    monitor_paused_changed = Signal(bool)
 
     def __init__(
         self,
         controller: DesktopController,
         catalog: AirportCatalog,
         browsers: list[BrowserCandidate],
-        on_run_now: Callable[[], None] | None = None,
+        on_run_now: Callable[[], bool | None] | None = None,
         history_store: SQLiteStore | None = None,
+        outputs_dir: Path | None = None,
     ):
         super().__init__()
         self.controller = controller
         self.catalog = catalog
         self.browsers = browsers
         self.history_store = history_store
+        self.outputs_dir = outputs_dir
+        self.latest_report_path: Path | None = None
         self._latest_prices: dict[str, Decimal] = {}
         self.setWindowTitle("航价守望")
         self.setMinimumSize(1050, 700)
@@ -100,8 +104,20 @@ class MainWindow(QMainWindow):
         if self.on_run_now is None:
             QMessageBox.information(self, "准备中", "监控服务正在初始化，请稍后重试。")
             return
-        self.on_run_now()
+        accepted = self.on_run_now()
+        if accepted is False:
+            return
         self.dashboard.set_runtime_message("已请求立即查询；航程会在一个隔离浏览器中严格串行执行。")
+
+    def open_latest_report(self) -> None:
+        report = self.latest_report_path
+        if report is None and self.outputs_dir and self.outputs_dir.is_dir():
+            candidates = sorted(self.outputs_dir.glob("airfare-monitor_*.xlsx"), key=lambda item: item.stat().st_mtime)
+            report = candidates[-1] if candidates else None
+        if report is None or not report.is_file():
+            QMessageBox.information(self, "暂无报告", "完成至少一轮查询后即可打开最新 Excel 报告。")
+            return
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(report.resolve())))
 
     def refresh_routes(self, routes: list[LegConfig]) -> None:
         self.dashboard.refresh(routes)
@@ -136,8 +152,10 @@ class MainWindow(QMainWindow):
                 "PAUSED": "已暂停",
                 "ATTENTION": "需要人工处理",
                 "ERROR": "运行异常",
+                "EXITING": "正在退出",
             }
             title = labels.get(event.state, event.state)
+            self.monitor_paused_changed.emit(event.state == "PAUSED")
             self._set_runtime(title, event.message)
         elif isinstance(event, CycleStarted):
             self.routes_page.mark_enabled_queued()
@@ -164,6 +182,7 @@ class MainWindow(QMainWindow):
         elif isinstance(event, CycleFinished):
             succeeded = sum(result.status.value == "success" for result in event.report.legs)
             workbook_name = Path(event.workbook_path).name
+            self.latest_report_path = Path(event.workbook_path)
             self.refresh_from_history()
             self._set_runtime(
                 "本轮完成",

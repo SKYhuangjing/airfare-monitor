@@ -5,7 +5,9 @@ import unittest
 import os
 from pathlib import Path
 
-from airfare_monitor.config import load_local_env, load_routes
+import yaml
+
+from airfare_monitor.config import load_local_env, load_routes, load_settings
 from airfare_monitor.errors import ConfigError
 
 
@@ -125,3 +127,13 @@ class ConfigTests(unittest.TestCase):
                 self.assertEqual(os.environ["AIRFARE_TEST_VALUE"], "file")
             finally:
                 os.environ.pop("AIRFARE_TEST_VALUE", None)
+
+    def test_rejects_monitor_interval_below_thirty_minutes(self):
+        root = Path(__file__).resolve().parents[1]
+        settings = yaml.safe_load((root / "resources" / "settings.default.yaml").read_text(encoding="utf-8"))
+        settings["schedule"]["interval_minutes"] = 29
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "settings.yaml"
+            path.write_text(yaml.safe_dump(settings, allow_unicode=True), encoding="utf-8")
+            with self.assertRaisesRegex(ConfigError, "30"):
+                load_settings(path, project_root=directory)
