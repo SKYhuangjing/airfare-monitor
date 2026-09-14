@@ -6,6 +6,7 @@ schedule:
 browser:
   engine: drissionpage
   headless: false
+  executable_path: null
   user_data_path: data/browser-profile
   local_port: 9333
   page_load_timeout_seconds: 45
@@ -45,3 +46,4 @@ desktop:
   browser_path: null
   desktop_notifications: true
   autostart: false
+  onboarding_completed: false

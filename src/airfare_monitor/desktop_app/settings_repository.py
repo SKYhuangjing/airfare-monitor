@@ -16,8 +16,11 @@ from .yaml_files import atomic_write_yaml
 class DesktopSettings:
     browser_kind: str = "auto"
     browser_path: str | None = None
+    interval_minutes: int = 30
+    show_browser: bool = True
     desktop_notifications: bool = True
     autostart: bool = False
+    onboarding_completed: bool = False
 
 
 class SettingsRepository:
@@ -31,30 +34,52 @@ class SettingsRepository:
     def load_desktop(self) -> DesktopSettings:
         raw = self._raw()
         desktop = raw.get("desktop", {})
+        schedule = raw.get("schedule", {})
+        browser = raw.get("browser", {})
         if not isinstance(desktop, dict):
             raise ValueError("settings.desktop 必须是映射")
+        if not isinstance(schedule, dict) or not isinstance(browser, dict):
+            raise ValueError("settings.schedule 和 settings.browser 必须是映射")
         kind = str(desktop.get("browser_kind", "auto")).lower()
         if kind not in {"auto", "chrome", "edge"}:
             raise ValueError("browser_kind 必须是 auto、chrome 或 edge")
-        browser_path = desktop.get("browser_path")
+        browser_path = desktop.get("browser_path", browser.get("executable_path"))
         if browser_path is not None and not isinstance(browser_path, str):
             raise ValueError("browser_path 必须是字符串或 null")
+        interval_minutes = schedule.get("interval_minutes", 30)
+        if interval_minutes not in {30, 60, 120}:
+            raise ValueError("桌面查询间隔必须是 30、60 或 120 分钟")
         return DesktopSettings(
             browser_kind=kind,
             browser_path=browser_path or None,
+            interval_minutes=interval_minutes,
+            show_browser=not _boolean(browser.get("headless", False), "browser.headless"),
             desktop_notifications=_boolean(desktop.get("desktop_notifications", True), "desktop_notifications"),
             autostart=_boolean(desktop.get("autostart", False), "autostart"),
+            onboarding_completed=_boolean(
+                desktop.get("onboarding_completed", False), "onboarding_completed"
+            ),
         )
 
     def save_desktop(self, value: DesktopSettings) -> None:
         if value.browser_kind not in {"auto", "chrome", "edge"}:
             raise ValueError("browser_kind 必须是 auto、chrome 或 edge")
+        if value.interval_minutes not in {30, 60, 120}:
+            raise ValueError("桌面查询间隔必须是 30、60 或 120 分钟")
         raw = self._raw()
+        schedule = raw.get("schedule")
+        browser = raw.get("browser")
+        if not isinstance(schedule, dict) or not isinstance(browser, dict):
+            raise ValueError("settings.schedule 和 settings.browser 必须是映射")
+        schedule["interval_minutes"] = value.interval_minutes
+        browser["headless"] = not value.show_browser
+        browser["executable_path"] = value.browser_path
         raw["desktop"] = {
             "browser_kind": value.browser_kind,
             "browser_path": value.browser_path,
             "desktop_notifications": value.desktop_notifications,
             "autostart": value.autostart,
+            "onboarding_completed": value.onboarding_completed,
         }
         atomic_write_yaml(
             self.path,

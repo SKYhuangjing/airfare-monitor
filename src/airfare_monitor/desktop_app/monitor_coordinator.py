@@ -100,13 +100,14 @@ class MonitorCoordinator:
                 next_run_at=self._next_run_at,
             )
 
-    def start(self) -> None:
+    def start(self, *, run_immediately: bool = True) -> None:
         if self._thread and self._thread.is_alive():
             return
         self._shutdown.clear()
         self._thread = threading.Thread(target=self._run, name="airfare-monitor-worker", daemon=True)
         self._thread.start()
-        self.run_now()
+        if run_immediately:
+            self.run_now()
 
     def run_now(self) -> bool:
         with self._lock:

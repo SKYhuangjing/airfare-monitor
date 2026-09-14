@@ -106,6 +106,8 @@ class QunarBrowserSession:
 
         self.settings.user_data_path.mkdir(parents=True, exist_ok=True)
         options = ChromiumOptions(read_file=False)
+        if self.settings.executable_path is not None:
+            options.set_browser_path(str(self.settings.executable_path))
         options.set_local_port(self.settings.local_port)
         options.set_user_data_path(str(self.settings.user_data_path))
         options.headless(self.settings.headless)

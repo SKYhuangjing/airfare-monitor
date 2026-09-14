@@ -5,19 +5,22 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QGuiApplication
-from PySide6.QtWidgets import QApplication, QMenu, QStyle, QSystemTrayIcon
+from PySide6.QtWidgets import QApplication, QDialog, QMenu, QMessageBox, QStyle, QSystemTrayIcon
 
 from ..app_paths import AppPaths
 from ..storage import SQLiteStore
 from ..ui.main_window import MainWindow
+from ..ui.onboarding import OnboardingDialog
 from .airport_catalog import AirportCatalog
-from .browser_detector import BrowserDetector
 from .controller import DesktopController
 from .event_bridge import CoordinatorEventBridge
+from .events import CoordinatorStateChanged
 from .monitor_coordinator import MonitorCoordinator
+from .preferences import PreferencesManager
 from .route_repository import RouteRepository
+from .settings_repository import SettingsRepository
 from .single_instance import SingleInstance
 from .startup import initialize_desktop
 
@@ -30,10 +33,15 @@ def validate_ui_runtime(paths: AppPaths) -> str:
     _apply_style(app, paths.resource_root)
     catalog = AirportCatalog.load(paths.resource_root / "airports.zh.json")
     controller = DesktopController(RouteRepository(paths.routes_path))
+    preferences = PreferencesManager(SettingsRepository(paths.settings_path, user_root=paths.user_root))
+    browsers = preferences.refresh_browsers()
+    onboarding = OnboardingDialog(preferences)
+    onboarding.close()
     window = MainWindow(
         controller,
         catalog,
-        BrowserDetector().detect(),
+        browsers,
+        preferences,
         on_run_now=lambda: None,
         history_store=SQLiteStore(paths.database_path),
         outputs_dir=paths.outputs_dir,
@@ -54,16 +62,50 @@ def run_desktop(paths: AppPaths, *, start_hidden: bool = False) -> int:
     instance = SingleInstance()
     if not instance.acquire():
         return 0
+    preferences = PreferencesManager(SettingsRepository(paths.settings_path, user_root=paths.user_root))
+    desktop_settings = preferences.load()
+    browsers = preferences.refresh_browsers()
+    add_first_route = False
+    if not desktop_settings.onboarding_completed:
+        onboarding = OnboardingDialog(preferences)
+        if onboarding.exec() != QDialog.DialogCode.Accepted:
+            instance.close()
+            return 0
+        assert onboarding.saved_settings is not None
+        desktop_settings = onboarding.saved_settings
+        browsers = preferences.browsers
+        add_first_route = not controller.current_routes()
+
     coordinator = MonitorCoordinator(paths)
-    controller.on_routes_changed(lambda routes: coordinator.run_now() if any(route.enabled for route in routes) else coordinator.pause())
+
+    window: MainWindow
+
+    def run_if_ready() -> bool:
+        current = preferences.load()
+        if preferences.selected_browser(current) is None:
+            message = "没有找到已选择的 Chrome 或 Edge，请在系统状态中重新检测并保存。"
+            window.show_browser_settings(message)
+            QMessageBox.warning(window, "需要浏览器", message)
+            return False
+        return coordinator.run_now()
+
     window = MainWindow(
         controller,
         catalog,
-        BrowserDetector().detect(),
-        on_run_now=coordinator.run_now,
+        browsers,
+        preferences,
+        on_run_now=run_if_ready,
         history_store=SQLiteStore(paths.database_path),
         outputs_dir=paths.outputs_dir,
     )
+    controller.on_routes_changed(
+        lambda routes: run_if_ready() if any(route.enabled for route in routes) else coordinator.pause()
+    )
+
+    def apply_runtime_settings(saved: object) -> None:
+        coordinator.apply_settings()
+
+    window.runtime_settings_saved.connect(apply_runtime_settings)
     bridge = CoordinatorEventBridge(app)
     bridge.event_received.connect(window.handle_monitor_event, Qt.ConnectionType.QueuedConnection)
     coordinator.subscribe(bridge.publish)
@@ -72,10 +114,18 @@ def run_desktop(paths: AppPaths, *, start_hidden: bool = False) -> int:
     window.runtime_status_changed.connect(lambda text: tray.setToolTip(f"航价守望 · {text}"))
     app.aboutToQuit.connect(coordinator.shutdown)
     app.aboutToQuit.connect(instance.close)
-    if not start_hidden:
+    selected_browser = preferences.selected_browser(desktop_settings)
+    if not start_hidden or selected_browser is None:
         window.show()
     tray.show()
-    coordinator.start()
+    coordinator.start(run_immediately=selected_browser is not None)
+    if selected_browser is None:
+        window.handle_monitor_event(
+            CoordinatorStateChanged("ERROR", "未检测到可用浏览器；完成浏览器设置前不会开始查询")
+        )
+        window.show_browser_settings("安装或重新选择 Chrome/Edge 后即可开始查询。")
+    if add_first_route:
+        QTimer.singleShot(0, window.begin_first_route)
     return app.exec()
 
 

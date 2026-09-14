@@ -89,6 +89,23 @@ class MonitorCoordinatorTests(unittest.TestCase):
             self.assertTrue(any(isinstance(event, NextRunScheduled) for event in events))
             self.assertTrue(coordinator.shutdown(timeout=2))
 
+    def test_start_can_wait_for_onboarding_without_running_a_route(self):
+        with TemporaryDirectory() as temp:
+            paths = _paths(temp)
+            paths.initialize()
+            RouteRepository(paths.routes_path).save([_leg("route-1")])
+            created: list[object] = []
+
+            def factory(legs, settings, sink, delay):
+                created.append(object())
+                raise AssertionError("service must not be created before onboarding is complete")
+
+            coordinator = MonitorCoordinator(paths, service_factory=factory)
+            coordinator.start(run_immediately=False)
+            self.assertTrue(_wait_until(lambda: coordinator.snapshot().state == "IDLE"))
+            self.assertEqual(created, [])
+            self.assertTrue(coordinator.shutdown(timeout=2))
+
 
 class _FakeService:
     def __init__(self, legs, sink, started: threading.Event, release: threading.Event):

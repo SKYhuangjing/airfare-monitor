@@ -77,6 +77,7 @@ class BrowserSettings:
         "&isInter=true&favoriteKey=&showTotalPr=null&adultNum={adult_count}"
         "&childNum={child_count}&cabinClass={cabin_class}"
     )
+    executable_path: Path | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -421,6 +422,8 @@ def load_settings(path: str | Path, *, project_root: str | Path | None = None) -
         candidate = Path(_string(value, setting_path))
         return candidate if candidate.is_absolute() else root_dir / candidate
 
+    executable_path_value = browser.get("executable_path")
+
     return AppSettings(
         schedule=ScheduleSettings(
             timezone=_string(_required(schedule, "timezone", "settings.schedule"), "settings.schedule.timezone"),
@@ -475,6 +478,11 @@ def load_settings(path: str | Path, *, project_root: str | Path | None = None) -
                     "&childNum={child_count}&cabinClass={cabin_class}",
                 ),
                 "settings.browser.roundtrip_search_url_template",
+            ),
+            executable_path=(
+                relative_path(executable_path_value, "settings.browser.executable_path")
+                if executable_path_value
+                else None
             ),
         ),
         collection=CollectionSettings(

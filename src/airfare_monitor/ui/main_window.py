@@ -19,20 +19,24 @@ from ..desktop_app.events import (
     CoordinatorStateChanged, CycleFinished, CycleStarted, FatalError, LegFinished, LegStarted,
     ManualAttentionRequested, NextRunScheduled,
 )
+from ..desktop_app.preferences import PreferencesManager
 from ..models import LegConfig
 from ..storage import SQLiteStore
+from .preferences import RuntimePreferencesForm, preference_card
 from .route_wizard import RouteWizard
 
 
 class MainWindow(QMainWindow):
     runtime_status_changed = Signal(str)
     monitor_paused_changed = Signal(bool)
+    runtime_settings_saved = Signal(object)
 
     def __init__(
         self,
         controller: DesktopController,
         catalog: AirportCatalog,
         browsers: list[BrowserCandidate],
+        preferences: PreferencesManager,
         on_run_now: Callable[[], bool | None] | None = None,
         history_store: SQLiteStore | None = None,
         outputs_dir: Path | None = None,
@@ -41,6 +45,7 @@ class MainWindow(QMainWindow):
         self.controller = controller
         self.catalog = catalog
         self.browsers = browsers
+        self.preferences = preferences
         self.history_store = history_store
         self.outputs_dir = outputs_dir
         self.latest_report_path: Path | None = None
@@ -65,7 +70,8 @@ class MainWindow(QMainWindow):
         self.routes_page = RoutesPage(self.controller, self.catalog)
         self.history = PlaceholderPage("价格历史", "完成查询后，这里将展示按航程查看的含税最低价趋势和 Excel 报告。")
         self.notifications = PlaceholderPage("通知设置", "桌面通知与 SMTP 设置将在下一阶段接入 Windows 凭据安全存储。")
-        self.system = SystemStatusPage(self.browsers)
+        self.system = SystemStatusPage(self.browsers, self.preferences)
+        self.system.settings_saved.connect(self.runtime_settings_saved.emit)
         for page in (self.dashboard, self.routes_page, self.history, self.notifications, self.system):
             self.pages.addWidget(page)
         layout.addWidget(self.pages, 1)
@@ -99,6 +105,15 @@ class MainWindow(QMainWindow):
     def _open_new_route(self) -> None:
         wizard = RouteWizard(self.catalog, self.controller, parent=self)
         wizard.exec()
+
+    def begin_first_route(self) -> None:
+        self._switch_page(1)
+        self._open_new_route()
+
+    def show_browser_settings(self, message: str | None = None) -> None:
+        self._switch_page(4)
+        if message:
+            self.system.set_browser_warning(message)
 
     def _run_now(self) -> None:
         if self.on_run_now is None:
@@ -363,30 +378,77 @@ class PlaceholderPage(QWidget):
 
 
 class SystemStatusPage(QWidget):
-    def __init__(self, browsers: list[BrowserCandidate]):
+    settings_saved = Signal(object)
+
+    def __init__(self, browsers: list[BrowserCandidate], preferences: PreferencesManager):
         super().__init__()
+        self.preferences = preferences
         layout = QVBoxLayout(self)
         layout.setContentsMargins(34, 30, 34, 30)
-        layout.addWidget(QLabel("系统状态", objectName="pageTitle"))
+        title_row = QHBoxLayout()
+        title_row.addWidget(QLabel("系统状态与运行设置", objectName="pageTitle"))
+        title_row.addStretch()
+        self.save_button = QPushButton("保存设置", objectName="primary")
+        self.save_button.clicked.connect(self._save_settings)
+        title_row.addWidget(self.save_button)
+        layout.addLayout(title_row)
+        layout.addWidget(QLabel("浏览器、查询间隔和通知偏好可随时调整。", objectName="muted"))
         self.routes_label = QLabel("启用航程：0 / 10")
-        browser_text = "\n".join(
-            f"{candidate.kind.title()} · {candidate.path}" + (f" · {candidate.version}" if candidate.version else "")
-            for candidate in browsers
-        ) or "未检测到 Chrome 或 Edge；安装后重新打开应用即可检测。"
-        for heading, text in (
-            ("浏览器", browser_text),
-            ("隔离 Profile", "将在首次运行时创建于当前用户应用数据目录。"),
-            ("运行说明", "浏览器始终使用独立 Profile；不会复用日常浏览器数据。"),
-        ):
-            card = QFrame(objectName="card")
-            card_layout = QVBoxLayout(card)
-            card_layout.addWidget(QLabel(heading))
-            card_layout.addWidget(QLabel(text, objectName="muted", wordWrap=True))
-            layout.addWidget(card)
+        settings = self.preferences.load()
+        self.form = RuntimePreferencesForm(browsers, settings)
+        self.form.redetect_requested.connect(self._redetect)
+        layout.addWidget(
+            preference_card(
+                "浏览器与自动查询",
+                "设置会保存到当前 Windows 用户目录；浏览器显示方式从下一轮查询开始生效。",
+                self.form,
+            )
+        )
+        self.browser_warning = QLabel(objectName="warningText", wordWrap=True)
+        self.browser_warning.hide()
+        layout.addWidget(self.browser_warning)
+
+        profile = QFrame(objectName="infoCard")
+        profile_layout = QVBoxLayout(profile)
+        profile_layout.addWidget(QLabel("独立浏览器空间", objectName="sectionTitle"))
+        profile_layout.addWidget(
+            QLabel(
+                "航价守望使用自己的浏览器 Profile，不会读取或修改你日常 Chrome/Edge 的收藏、Cookie 和登录状态。",
+                objectName="muted",
+                wordWrap=True,
+            )
+        )
+        layout.addWidget(profile)
         layout.addWidget(self.routes_label)
         self.runtime_label = QLabel("运行状态：等待启动", objectName="muted")
         layout.addWidget(self.runtime_label)
         layout.addStretch()
+
+    def _redetect(self) -> None:
+        browsers = self.preferences.refresh_browsers()
+        current = self.preferences.load()
+        self.form.set_browsers(
+            browsers,
+            preferred_path=current.browser_path,
+            preferred_kind=current.browser_kind,
+        )
+        if browsers:
+            self.browser_warning.hide()
+
+    def _save_settings(self) -> None:
+        try:
+            saved = self.preferences.save(self.form.values(onboarding_completed=True))
+        except Exception as exc:
+            QMessageBox.warning(self, "设置未保存", str(exc))
+            return
+        self.form.load(saved)
+        self.browser_warning.hide()
+        self.settings_saved.emit(saved)
+        QMessageBox.information(self, "设置已保存", "新的运行设置将从下一轮查询开始生效。")
+
+    def set_browser_warning(self, message: str) -> None:
+        self.browser_warning.setText(message)
+        self.browser_warning.show()
 
     def set_route_count(self, routes: list[LegConfig]) -> None:
         self.routes_label.setText(f"启用航程：{sum(route.enabled for route in routes)} / {MAX_ENABLED_LEGS}")

@@ -39,6 +39,27 @@ class BrowserDetector:
         return found
 
     @staticmethod
+    def select(
+        candidates: list[BrowserCandidate],
+        *,
+        preferred_kind: str = "auto",
+        preferred_path: str | Path | None = None,
+    ) -> BrowserCandidate | None:
+        if preferred_path:
+            expected = Path(preferred_path)
+            for candidate in candidates:
+                try:
+                    if candidate.path.samefile(expected):
+                        return candidate
+                except OSError:
+                    if candidate.path == expected:
+                        return candidate
+            return None
+        if preferred_kind in {"chrome", "edge"}:
+            return next((candidate for candidate in candidates if candidate.kind == preferred_kind), None)
+        return candidates[0] if candidates else None
+
+    @staticmethod
     def _kind_for_path(path: Path) -> str:
         return "edge" if "edge" in path.name.lower() else "chrome"
 
