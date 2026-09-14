@@ -6,7 +6,7 @@ from decimal import Decimal, InvalidOperation
 
 from PySide6.QtCore import QDate, QTime, Qt
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDateEdit, QDialog, QDialogButtonBox, QFormLayout, QFrame, QHBoxLayout, QLabel,
+    QCheckBox, QComboBox, QDateEdit, QDialog, QFormLayout, QFrame, QHBoxLayout, QLabel,
     QLineEdit, QMessageBox, QPushButton, QSpinBox, QStackedWidget, QTimeEdit, QVBoxLayout, QWidget,
 )
 
@@ -32,6 +32,8 @@ class RouteWizard(QDialog):
         self.back_button = QPushButton("上一步")
         self.next_button = QPushButton("下一步")
         self.next_button.setObjectName("primary")
+        self.save_paused_button = QPushButton("保存但暂不监控")
+        self.save_paused_button.hide()
         self.cancel_button = QPushButton("取消")
         self._build_fields()
         self.stack.addWidget(self._route_page())
@@ -41,6 +43,7 @@ class RouteWizard(QDialog):
         buttons.addWidget(self.cancel_button)
         buttons.addStretch()
         buttons.addWidget(self.back_button)
+        buttons.addWidget(self.save_paused_button)
         buttons.addWidget(self.next_button)
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel("航程设置", objectName="pageTitle"))
@@ -50,6 +53,7 @@ class RouteWizard(QDialog):
         self.cancel_button.clicked.connect(self.reject)
         self.back_button.clicked.connect(self._back)
         self.next_button.clicked.connect(self._next)
+        self.save_paused_button.clicked.connect(lambda: self._save(force_enabled=False))
         self.origin_picker.selected_changed.connect(self._update_capability)
         self.destination_picker.selected_changed.connect(self._update_capability)
         self.trip_type.currentIndexChanged.connect(self._update_capability)
@@ -63,13 +67,17 @@ class RouteWizard(QDialog):
         self.trip_type = QComboBox()
         self.trip_type.addItems(["单程", "往返"])
         self.departure_date = QDateEdit(calendarPopup=True)
+        self.departure_date.setMinimumDate(QDate.currentDate())
         self.departure_date.setDate(QDate.currentDate().addDays(1))
         self.return_date = QDateEdit(calendarPopup=True)
+        self.return_date.setMinimumDate(QDate.currentDate().addDays(1))
         self.return_date.setDate(QDate.currentDate().addDays(8))
         self.start_time = QTimeEdit(QTime(0, 0))
         self.end_time = QTimeEdit(QTime(23, 59))
+        self.departure_period = _period_combo()
         self.return_start_time = QTimeEdit(QTime(0, 0))
         self.return_end_time = QTimeEdit(QTime(23, 59))
+        self.return_period = _period_combo()
         self.direct_only = QCheckBox("只看直达航班")
         self.direct_only.setChecked(True)
         self.max_layover = QSpinBox()
@@ -78,6 +86,19 @@ class RouteWizard(QDialog):
         self.price = QLineEdit(placeholderText="留空表示只观察，不触发低价提醒")
         self.enabled = QCheckBox("保存后立即启用监控")
         self.enabled.setChecked(True)
+        self.adult_count = QSpinBox()
+        self.adult_count.setRange(1, 9)
+        self.adult_count.setValue(1)
+        self.child_count = QSpinBox()
+        self.child_count.setRange(0, 8)
+        self.cabin_class = QComboBox()
+        for label, value in (
+            ("经济舱", "economy"),
+            ("高级经济舱", "premium_economy"),
+            ("商务舱", "business"),
+            ("头等舱", "first"),
+        ):
+            self.cabin_class.addItem(label, value)
         self.focus_enabled = QCheckBox("添加重点班次（可选）")
         self.focus_label = QLineEdit(placeholderText="例如：早班直飞")
         self.focus_departure = QTimeEdit(QTime(8, 0))
@@ -85,6 +106,13 @@ class RouteWizard(QDialog):
         self.focus_tolerance = QSpinBox()
         self.focus_tolerance.setRange(0, 360)
         self.focus_tolerance.setValue(30)
+        self.departure_period.currentIndexChanged.connect(
+            lambda: _apply_period(self.departure_period, self.start_time, self.end_time)
+        )
+        self.return_period.currentIndexChanged.connect(
+            lambda: _apply_period(self.return_period, self.return_start_time, self.return_end_time)
+        )
+        self.focus_enabled.toggled.connect(self._update_focus_fields)
 
     def _route_page(self) -> QWidget:
         page = QWidget()
@@ -98,13 +126,16 @@ class RouteWizard(QDialog):
         form.addRow("航程类型", self.trip_type)
         form.addRow("出发日期", self.departure_date)
         window = QHBoxLayout()
+        window.addWidget(self.departure_period)
         window.addWidget(self.start_time)
         window.addWidget(QLabel("至"))
         window.addWidget(self.end_time)
         form.addRow("出发时间段", _layout_widget(window))
         self.return_date_label = QLabel("返程日期")
         self.return_window_label = QLabel("返程时间段")
-        self.return_window_widget = _layout_widget(_time_layout(self.return_start_time, self.return_end_time))
+        return_window = _time_layout(self.return_start_time, self.return_end_time)
+        return_window.insertWidget(0, self.return_period)
+        self.return_window_widget = _layout_widget(return_window)
         form.addRow(self.return_date_label, self.return_date)
         form.addRow(self.return_window_label, self.return_window_widget)
         layout.addLayout(form)
@@ -119,12 +150,14 @@ class RouteWizard(QDialog):
         self.layover_label = QLabel("最长总中转等待")
         form.addRow(self.layover_label, self.max_layover)
         form.addRow("含税心理价位（CNY）", self.price)
-        form.addRow("启用状态", self.enabled)
         form.addRow("重点班次", self.focus_enabled)
         form.addRow("重点班次名称", self.focus_label)
         form.addRow("重点起飞时间", self.focus_departure)
         form.addRow("重点到达时间", self.focus_arrival)
         form.addRow("时间容差（分钟）", self.focus_tolerance)
+        form.addRow("成人", self.adult_count)
+        form.addRow("儿童", self.child_count)
+        form.addRow("舱位", self.cabin_class)
         layout.addLayout(form)
         note = QLabel("价格比较、历史和提醒均使用解析后的 CNY 含税总价。")
         note.setObjectName("muted")
@@ -147,6 +180,7 @@ class RouteWizard(QDialog):
     def _load_route(self, route: LegConfig | None) -> None:
         if route is None:
             self._update_capability()
+            self._update_focus_fields(False)
             return
         self.origin_picker.set_record(self.catalog.by_iata(route.origin_airport_iata))
         self.destination_picker.set_record(self.catalog.by_iata(route.destination_airport_iata))
@@ -154,14 +188,24 @@ class RouteWizard(QDialog):
         self.departure_date.setDate(_qdate(route.departure_date))
         self.start_time.setTime(_qtime(route.etd_window.start))
         self.end_time.setTime(_qtime(route.etd_window.end))
+        _select_period(self.departure_period, route.etd_window.start, route.etd_window.end)
         self.direct_only.setChecked(route.direct_only)
         self.max_layover.setValue(route.max_layover_minutes or 240)
         self.price.setText(str(route.expected_total_price_cny or ""))
         self.enabled.setChecked(route.enabled)
+        self.adult_count.setValue(route.adult_count)
+        self.child_count.setValue(route.child_count)
+        cabin_index = self.cabin_class.findData(route.cabin_class)
+        self.cabin_class.setCurrentIndex(max(0, cabin_index))
         if route.return_date and route.return_etd_window:
             self.return_date.setDate(_qdate(route.return_date))
             self.return_start_time.setTime(_qtime(route.return_etd_window.start))
             self.return_end_time.setTime(_qtime(route.return_etd_window.end))
+            _select_period(
+                self.return_period,
+                route.return_etd_window.start,
+                route.return_etd_window.end,
+            )
         if route.preferred_schedules:
             focus = route.preferred_schedules[0]
             self.focus_enabled.setChecked(True)
@@ -170,6 +214,7 @@ class RouteWizard(QDialog):
             self.focus_arrival.setTime(_qtime(focus.arrival_time))
             self.focus_tolerance.setValue(focus.departure_tolerance_minutes)
         self._update_capability()
+        self._update_focus_fields(self.focus_enabled.isChecked())
 
     def _update_capability(self) -> None:
         origin = self.origin_picker.selected
@@ -199,6 +244,15 @@ class RouteWizard(QDialog):
         self.layover_label.setVisible(show)
         self.max_layover.setVisible(show)
 
+    def _update_focus_fields(self, enabled: bool) -> None:
+        for field in (
+            self.focus_label,
+            self.focus_departure,
+            self.focus_arrival,
+            self.focus_tolerance,
+        ):
+            field.setEnabled(enabled)
+
     def _swap(self) -> None:
         origin, destination = self.origin_picker.selected, self.destination_picker.selected
         self.origin_picker.set_record(destination)
@@ -221,13 +275,29 @@ class RouteWizard(QDialog):
             self.stack.setCurrentIndex(index + 1)
             self._update_step()
             return
-        self._save()
+        self._save(force_enabled=True)
 
     def _update_step(self) -> None:
         index = self.stack.currentIndex()
         self.step_label.setText(f"第 {index + 1} 步，共 3 步 · {'航程信息' if index == 0 else '偏好设置' if index == 1 else '确认保存'}")
         self.back_button.setVisible(index > 0)
-        self.next_button.setText("保存航程" if index == 2 else "下一步")
+        self.save_paused_button.setVisible(index == 2)
+        if index == 2:
+            self.next_button.setText("保存并开始监控")
+            can_enable = (
+                bool(self.route and self.route.enabled)
+                or self.controller.enabled_capacity_remaining(
+                    excluding_id=self.route.id if self.route else None
+                ) > 0
+            )
+            self.next_button.setEnabled(can_enable)
+            self.next_button.setToolTip(
+                "" if can_enable else "当前设备已启用 10 条航程，请保存为暂停或先暂停其他航程"
+            )
+        else:
+            self.next_button.setText("下一步")
+            self.next_button.setEnabled(True)
+            self.next_button.setToolTip("")
 
     def _validate_route_page(self) -> bool:
         if not self.origin_picker.selected or not self.destination_picker.selected:
@@ -270,18 +340,18 @@ class RouteWizard(QDialog):
             f"<p>出发：{self.departure_date.date().toString('yyyy-MM-dd')} · "
             f"{self.start_time.time().toString('HH:mm')}–{self.end_time.time().toString('HH:mm')}</p>"
             f"<p>来源自动匹配：<b>{source}</b></p>"
-            f"<p>状态：<b>{'启用监控' if self.enabled.isChecked() else '保存为暂停'}</b></p>"
+            "<p>下一步请选择立即开始监控，或仅保存为暂停。</p>"
         )
 
-    def _save(self) -> None:
+    def _save(self, *, force_enabled: bool | None = None) -> None:
         try:
-            self.controller.save_route(self._build_route())
+            self.controller.save_route(self._build_route(force_enabled=force_enabled))
         except (ValueError, OSError) as exc:
             QMessageBox.critical(self, "保存失败", str(exc))
             return
         self.accept()
 
-    def _build_route(self) -> LegConfig:
+    def _build_route(self, *, force_enabled: bool | None = None) -> LegConfig:
         origin = self.origin_picker.selected
         destination = self.destination_picker.selected
         assert origin and destination
@@ -303,7 +373,7 @@ class RouteWizard(QDialog):
             )
         return LegConfig(
             id=self.route.id if self.route else f"route-{uuid.uuid4().hex[:8]}",
-            enabled=self.enabled.isChecked(),
+            enabled=self.enabled.isChecked() if force_enabled is None else force_enabled,
             origin_airport_iata=origin.airport_iata,
             destination_airport_iata=destination.airport_iata,
             departure_date=self.departure_date.date().toPython(),
@@ -311,9 +381,9 @@ class RouteWizard(QDialog):
             direct_only=direct,
             expected_total_price_cny=Decimal(self.price.text().strip()) if self.price.text().strip() else None,
             top_n=10,
-            adult_count=1,
-            child_count=0,
-            cabin_class="economy",
+            adult_count=self.adult_count.value(),
+            child_count=self.child_count.value(),
+            cabin_class=str(self.cabin_class.currentData()),
             origin_name_zh=origin.city_name_zh,
             destination_name_zh=destination.city_name_zh,
             preferred_schedules=preferred,
@@ -347,6 +417,33 @@ def _time_layout(start: QTimeEdit, end: QTimeEdit) -> QHBoxLayout:
     layout.addWidget(QLabel("至"))
     layout.addWidget(end)
     return layout
+
+
+def _period_combo() -> QComboBox:
+    combo = QComboBox()
+    combo.addItem("全天", (0, 0, 23, 59))
+    combo.addItem("上午", (6, 0, 12, 0))
+    combo.addItem("下午", (12, 0, 18, 0))
+    combo.addItem("晚上", (18, 0, 23, 59))
+    combo.addItem("自定义", None)
+    return combo
+
+
+def _apply_period(combo: QComboBox, start: QTimeEdit, end: QTimeEdit) -> None:
+    period = combo.currentData()
+    if not isinstance(period, tuple):
+        return
+    start.setTime(QTime(period[0], period[1]))
+    end.setTime(QTime(period[2], period[3]))
+
+
+def _select_period(combo: QComboBox, start: time, end: time) -> None:
+    expected = (start.hour, start.minute, end.hour, end.minute)
+    for index in range(combo.count()):
+        if combo.itemData(index) == expected:
+            combo.setCurrentIndex(index)
+            return
+    combo.setCurrentIndex(combo.count() - 1)
 
 
 def _qdate(value: date) -> QDate:

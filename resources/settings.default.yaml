@@ -47,3 +47,4 @@ desktop:
   desktop_notifications: true
   autostart: false
   onboarding_completed: false
+  close_to_tray_confirmed: false

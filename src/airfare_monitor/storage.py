@@ -447,6 +447,21 @@ class SQLiteStore:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def latest_successful_run(self) -> dict[str, Any] | None:
+        """Return the newest run that produced at least one valid leg result."""
+        with closing(self.connect()) as connection:
+            row = connection.execute(
+                """SELECT runs.run_id, runs.started_at, runs.finished_at, runs.status,
+                          runs.threshold_confirmed_count
+                   FROM collection_runs runs
+                   WHERE EXISTS (
+                       SELECT 1 FROM leg_results legs
+                       WHERE legs.run_id = runs.run_id AND legs.status = 'success'
+                   )
+                   ORDER BY runs.finished_at DESC LIMIT 1"""
+            ).fetchone()
+        return dict(row) if row else None
+
     def latest_leg_results(self, leg_ids: list[str]) -> list[dict[str, Any]]:
         if not leg_ids:
             return []
@@ -493,6 +508,17 @@ class SQLiteStore:
                 "SELECT occurred_at, event_type, severity, leg_id, message FROM app_events ORDER BY id DESC LIMIT ?", (limit,)
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def prune_app_events(self, keep_days: int = 30, *, now: datetime | None = None) -> int:
+        if keep_days < 0:
+            raise ValueError("keep_days cannot be negative")
+        cutoff = (now or datetime.now()) - timedelta(days=keep_days)
+        with closing(self.connect()) as connection:
+            with connection:
+                cursor = connection.execute(
+                    "DELETE FROM app_events WHERE occurred_at < ?", (_iso(cutoff),)
+                )
+                return cursor.rowcount
 
     def prune_raw_responses(self, keep_days: int, *, now: datetime | None = None) -> int:
         if keep_days < 0:

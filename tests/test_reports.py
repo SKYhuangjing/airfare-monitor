@@ -45,6 +45,16 @@ MAIL = MailSettings(False, "smtp.example.com", 465, "ssl", "U", "P", "S", "R", T
 
 
 class ReportTests(unittest.TestCase):
+    def test_latest_successful_run_uses_persisted_leg_status(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = SQLiteStore(Path(directory) / "monitor.sqlite3")
+            store.initialize()
+            value = report()
+            store.save_report(value)
+            latest = store.latest_successful_run()
+            self.assertIsNotNone(latest)
+            self.assertEqual(latest["run_id"], value.run_id)
+
     def test_subject_uses_enabled_leg_count(self):
         self.assertIn("1程更新", build_subject(report(), MAIL))
 

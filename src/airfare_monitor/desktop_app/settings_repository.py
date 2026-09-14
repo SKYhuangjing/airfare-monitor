@@ -21,6 +21,7 @@ class DesktopSettings:
     desktop_notifications: bool = True
     autostart: bool = False
     onboarding_completed: bool = False
+    close_to_tray_confirmed: bool = False
 
 
 class SettingsRepository:
@@ -59,6 +60,9 @@ class SettingsRepository:
             onboarding_completed=_boolean(
                 desktop.get("onboarding_completed", False), "onboarding_completed"
             ),
+            close_to_tray_confirmed=_boolean(
+                desktop.get("close_to_tray_confirmed", False), "close_to_tray_confirmed"
+            ),
         )
 
     def save_desktop(self, value: DesktopSettings) -> None:
@@ -80,6 +84,7 @@ class SettingsRepository:
             "desktop_notifications": value.desktop_notifications,
             "autostart": value.autostart,
             "onboarding_completed": value.onboarding_completed,
+            "close_to_tray_confirmed": value.close_to_tray_confirmed,
         }
         atomic_write_yaml(
             self.path,

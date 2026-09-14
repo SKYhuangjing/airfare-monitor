@@ -67,6 +67,7 @@ class LegFinished:
 class CycleFinished:
     report: RunReport
     workbook_path: str
+    total_legs: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

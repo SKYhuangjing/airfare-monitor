@@ -243,7 +243,7 @@ class MonitorCoordinator:
                 self._interruptible_delay,
             )
             report, workbook = service.run_once(send_email=settings.mail.enabled)
-            self._emit(CycleFinished(report, str(workbook)))
+            self._emit(CycleFinished(report, str(workbook), len(enabled)))
 
             if any(result.status.value == "manual_attention" for result in report.legs):
                 self._set_state("ATTENTION", "部分航程需要人工处理")
@@ -318,7 +318,14 @@ def _default_service_factory(
     event_sink: MonitorEventSink,
     delay: Callable[[float], None],
 ) -> _Service:
-    return MonitorService(legs, settings, event_sink=event_sink, sleep=delay)
+    should_continue = getattr(event_sink, "should_continue", lambda: True)
+    return MonitorService(
+        legs,
+        settings,
+        event_sink=event_sink,
+        sleep=delay,
+        should_continue=should_continue,
+    )
 
 
 class _CoordinatorSink(MonitorEventSink):
@@ -342,3 +349,6 @@ class _CoordinatorSink(MonitorEventSink):
 
     def on_cycle_finished(self, report: RunReport, workbook: object) -> None:
         return
+
+    def should_continue(self) -> bool:
+        return not self.coordinator._pause_requested.is_set() and not self.coordinator._shutdown.is_set()

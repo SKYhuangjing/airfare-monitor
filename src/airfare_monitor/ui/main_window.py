@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
 
@@ -20,10 +21,14 @@ from ..desktop_app.events import (
     ManualAttentionRequested, NextRunScheduled,
 )
 from ..desktop_app.preferences import PreferencesManager
+from ..desktop_app.view_data import load_dashboard_data
 from ..models import LegConfig
 from ..storage import SQLiteStore
+from .dashboard_page import DashboardPage
+from .history_page import HistoryPage
 from .preferences import RuntimePreferencesForm, preference_card
 from .route_wizard import RouteWizard
+from .. import __version__
 
 
 class MainWindow(QMainWindow):
@@ -38,6 +43,9 @@ class MainWindow(QMainWindow):
         browsers: list[BrowserCandidate],
         preferences: PreferencesManager,
         on_run_now: Callable[[], bool | None] | None = None,
+        on_pause: Callable[[], bool | None] | None = None,
+        on_resume: Callable[[], bool | None] | None = None,
+        on_retry_leg: Callable[[str], bool | None] | None = None,
         history_store: SQLiteStore | None = None,
         outputs_dir: Path | None = None,
     ):
@@ -54,6 +62,10 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1050, 700)
         self.resize(1250, 800)
         self.on_run_now = on_run_now
+        self.on_pause = on_pause
+        self.on_resume = on_resume
+        self.on_retry_leg = on_retry_leg
+        self._paused = False
         self._build()
         self.controller.on_routes_changed(self.refresh_routes)
         self.refresh_routes(self.controller.current_routes())
@@ -66,11 +78,26 @@ class MainWindow(QMainWindow):
         self.sidebar = self._make_sidebar()
         layout.addWidget(self.sidebar)
         self.pages = QStackedWidget()
-        self.dashboard = DashboardPage(self._open_new_route, self._run_now)
+        self.dashboard = DashboardPage(
+            self._open_new_route,
+            self._run_now,
+            self._toggle_pause,
+            lambda: self._switch_page(1),
+        )
         self.routes_page = RoutesPage(self.controller, self.catalog)
-        self.history = PlaceholderPage("价格历史", "完成查询后，这里将展示按航程查看的含税最低价趋势和 Excel 报告。")
+        self.history = HistoryPage(
+            self.history_store,
+            open_latest_report=self.open_latest_report,
+            outputs_dir=self.outputs_dir,
+        )
         self.notifications = PlaceholderPage("通知设置", "桌面通知与 SMTP 设置将在下一阶段接入 Windows 凭据安全存储。")
-        self.system = SystemStatusPage(self.browsers, self.preferences)
+        self.system = SystemStatusPage(
+            self.browsers,
+            self.preferences,
+            history_store=self.history_store,
+            outputs_dir=self.outputs_dir,
+            retry_leg=self._retry_leg,
+        )
         self.system.settings_saved.connect(self.runtime_settings_saved.emit)
         for page in (self.dashboard, self.routes_page, self.history, self.notifications, self.system):
             self.pages.addWidget(page)
@@ -122,7 +149,22 @@ class MainWindow(QMainWindow):
         accepted = self.on_run_now()
         if accepted is False:
             return
+        self.dashboard.set_running(True)
         self.dashboard.set_runtime_message("已请求立即查询；航程会在一个隔离浏览器中严格串行执行。")
+
+    def _toggle_pause(self) -> None:
+        callback = self.on_resume if self._paused else self.on_pause
+        if callback is None:
+            return
+        callback()
+
+    def _retry_leg(self, leg_id: str) -> None:
+        if self.on_retry_leg is None:
+            return
+        accepted = self.on_retry_leg(leg_id)
+        if accepted is not False:
+            self.dashboard.set_running(True)
+            self.system.clear_attention()
 
     def open_latest_report(self) -> None:
         report = self.latest_report_path
@@ -137,6 +179,7 @@ class MainWindow(QMainWindow):
     def refresh_routes(self, routes: list[LegConfig]) -> None:
         self.dashboard.refresh(routes)
         self.routes_page.refresh(routes)
+        self.history.refresh(routes)
         self.system.set_route_count(routes)
 
     def refresh_from_history(self) -> None:
@@ -152,8 +195,8 @@ class MainWindow(QMainWindow):
                 self._latest_prices[leg_id] = price
             self.routes_page.set_leg_status(leg_id, _stored_result_status(row))
         latest_run = self.history_store.latest_run()
-        if rows:
-            self.dashboard.set_latest_prices(self._latest_prices.values())
+        self.dashboard.set_data(load_dashboard_data(self.history_store, routes))
+        self.history.reload()
         if latest_run:
             finished = str(latest_run["finished_at"]).replace("T", " ")
             self.dashboard.set_runtime("最近完成", f"最近一轮：{finished} · {latest_run['status']}")
@@ -170,10 +213,14 @@ class MainWindow(QMainWindow):
                 "EXITING": "正在退出",
             }
             title = labels.get(event.state, event.state)
+            self._paused = event.state == "PAUSED"
             self.monitor_paused_changed.emit(event.state == "PAUSED")
+            self.dashboard.set_paused(self._paused)
+            self.dashboard.set_running(event.state == "RUNNING")
             self._set_runtime(title, event.message)
         elif isinstance(event, CycleStarted):
             self.routes_page.mark_enabled_queued()
+            self.dashboard.set_running(True)
             self._set_runtime("正在查询", f"本轮共 {event.total_legs} 条航程，浏览器将严格串行执行。")
         elif isinstance(event, LegStarted):
             route = f"{event.leg.origin_airport_iata} → {event.leg.destination_airport_iata}"
@@ -192,24 +239,28 @@ class MainWindow(QMainWindow):
             else:
                 route_status = "查询失败"
             self.routes_page.set_leg_status(event.result.leg.id, route_status)
-            self.dashboard.set_latest_prices(self._latest_prices.values())
             self.statusBar().showMessage(f"已完成 {event.index}/{event.total}：{route_status}")
         elif isinstance(event, CycleFinished):
             succeeded = sum(result.status.value == "success" for result in event.report.legs)
+            total = event.total_legs or len(event.report.legs)
             workbook_name = Path(event.workbook_path).name
             self.latest_report_path = Path(event.workbook_path)
             self.refresh_from_history()
+            self.dashboard.set_running(False)
             self._set_runtime(
                 "本轮完成",
-                f"成功 {succeeded}/{len(event.report.legs)} · 报告：{workbook_name}",
+                f"成功 {succeeded}/{total} · 报告：{workbook_name}",
             )
         elif isinstance(event, NextRunScheduled):
             due = event.due_at.strftime("%m-%d %H:%M")
+            self.dashboard.set_next_run(event.due_at)
             self._set_runtime("等待下轮", f"下次自动查询：{due}")
         elif isinstance(event, ManualAttentionRequested):
             self.routes_page.set_leg_status(event.leg_id, "需要人工处理")
+            self.system.set_attention(event.leg_id, event.message)
             self._set_runtime("需要人工处理", event.message)
         elif isinstance(event, FatalError):
+            self.dashboard.set_running(False)
             self._set_runtime("运行异常", f"{event.category}：{event.user_message}")
 
     def _set_runtime(self, title: str, detail: str) -> None:
@@ -223,64 +274,25 @@ class MainWindow(QMainWindow):
         self.raise_()
         self.activateWindow()
 
-
-class DashboardPage(QWidget):
-    def __init__(self, open_new_route: Callable[[], None], run_now: Callable[[], None]):
-        super().__init__()
-        self.open_new_route = open_new_route
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(34, 30, 34, 30)
-        title_row = QHBoxLayout()
-        title = QLabel("你好，旅行家", objectName="pageTitle")
-        add = QPushButton("添加航程", objectName="primary")
-        add.clicked.connect(open_new_route)
-        title_row.addWidget(title)
-        title_row.addStretch()
-        title_row.addWidget(add)
-        layout.addLayout(title_row)
-        layout.addWidget(QLabel("关注航价变化，出发更从容", objectName="muted"))
-        run = QPushButton("立即查询")
-        run.clicked.connect(run_now)
-        layout.addWidget(run, alignment=Qt.AlignmentFlag.AlignLeft)
-        cards = QHBoxLayout()
-        self.count_card = _metric_card("启用航程", "0 / 10", "每台设备严格串行运行")
-        self.price_card = _metric_card("最新含税最低价", "暂无数据", "完成首次查询后显示 CNY 总价")
-        self.status_card = _metric_card("运行状态", "等待配置", "设置航程后可启动监控")
-        for card in (self.count_card, self.price_card, self.status_card):
-            cards.addWidget(card)
-        layout.addLayout(cards)
-        info = QFrame(objectName="card")
-        info_layout = QVBoxLayout(info)
-        info_layout.addWidget(QLabel("开始使用", objectName="pageTitle"))
-        info_layout.addWidget(QLabel("1. 添加出发地、目的地和日期\n2. 设置含税心理价位和监控偏好\n3. 由应用自动选择同程或去哪儿来源"))
-        layout.addWidget(info)
-        layout.addStretch()
-
-    def refresh(self, routes: list[LegConfig]) -> None:
-        enabled = sum(route.enabled for route in routes)
-        self.count_card.findChild(QLabel, "value").setText(f"{enabled} / {MAX_ENABLED_LEGS}")
-        current = self.status_card.findChild(QLabel, "value").text()
-        if not enabled:
-            self.status_card.findChild(QLabel, "value").setText("等待配置")
-        elif current == "等待配置":
-            self.status_card.findChild(QLabel, "value").setText("等待首次查询")
-
-    def set_runtime_message(self, message: str) -> None:
-        self.set_runtime("正在准备", message)
-
-    def set_runtime(self, title: str, detail: str) -> None:
-        self.status_card.findChild(QLabel, "value").setText(title)
-        self.status_card.findChild(QLabel, "detail").setText(detail)
-
-    def set_latest_prices(self, prices: object) -> None:
-        values = list(prices)
-        if not values:
-            self.price_card.findChild(QLabel, "value").setText("暂无符合条件价格")
-            self.price_card.findChild(QLabel, "detail").setText("查询成功但没有航班符合当前机场、日期和筛选条件")
+    def closeEvent(self, event) -> None:  # noqa: N802 - Qt API
+        if not self.isVisible():
+            event.accept()
             return
-        minimum = min(values)
-        self.price_card.findChild(QLabel, "value").setText(_price_text(minimum))
-        self.price_card.findChild(QLabel, "detail").setText("当前启用航程最近一次 CNY 含税总价")
+        settings = self.preferences.load()
+        if not settings.close_to_tray_confirmed:
+            QMessageBox.information(
+                self,
+                "航价守望仍会继续运行",
+                "关闭窗口后应用会收至系统托盘，监控不会停止。\n"
+                "如需完全退出，请使用托盘菜单中的“退出并停止监控”。",
+            )
+            try:
+                self.preferences.repository.save_desktop(
+                    replace(settings, close_to_tray_confirmed=True)
+                )
+            except (OSError, ValueError):
+                pass
+        event.accept()
 
 
 class RoutesPage(QWidget):
@@ -380,19 +392,42 @@ class PlaceholderPage(QWidget):
 class SystemStatusPage(QWidget):
     settings_saved = Signal(object)
 
-    def __init__(self, browsers: list[BrowserCandidate], preferences: PreferencesManager):
+    def __init__(
+        self,
+        browsers: list[BrowserCandidate],
+        preferences: PreferencesManager,
+        *,
+        history_store: SQLiteStore | None = None,
+        outputs_dir: Path | None = None,
+        retry_leg: Callable[[str], None] | None = None,
+    ):
         super().__init__()
         self.preferences = preferences
+        self.history_store = history_store
+        self.outputs_dir = outputs_dir
+        self.retry_leg = retry_leg
+        self._attention_leg_id: str | None = None
         layout = QVBoxLayout(self)
         layout.setContentsMargins(34, 30, 34, 30)
         title_row = QHBoxLayout()
         title_row.addWidget(QLabel("系统状态与运行设置", objectName="pageTitle"))
         title_row.addStretch()
+        title_row.addWidget(QLabel(f"v{__version__}", objectName="muted"))
         self.save_button = QPushButton("保存设置", objectName="primary")
         self.save_button.clicked.connect(self._save_settings)
         title_row.addWidget(self.save_button)
         layout.addLayout(title_row)
         layout.addWidget(QLabel("浏览器、查询间隔和通知偏好可随时调整。", objectName="muted"))
+        health_row = QHBoxLayout()
+        self.service_health = _health_card("监控服务", "等待启动")
+        self.storage_health = _health_card(
+            "数据存储",
+            "正常" if history_store is not None else "不可用",
+        )
+        self.query_health = _health_card("航班查询", "等待首次查询")
+        for card in (self.service_health, self.storage_health, self.query_health):
+            health_row.addWidget(card, 1)
+        layout.addLayout(health_row)
         self.routes_label = QLabel("启用航程：0 / 10")
         settings = self.preferences.load()
         self.form = RuntimePreferencesForm(browsers, settings)
@@ -419,6 +454,34 @@ class SystemStatusPage(QWidget):
             )
         )
         layout.addWidget(profile)
+
+        self.attention_card = QFrame(objectName="warningCard")
+        attention_layout = QHBoxLayout(self.attention_card)
+        self.attention_text = QLabel(wordWrap=True)
+        attention_layout.addWidget(self.attention_text, 1)
+        retry = QPushButton("重新查询此航程", objectName="primary")
+        retry.clicked.connect(self._retry_attention)
+        later = QPushButton("稍后处理")
+        later.clicked.connect(self.attention_card.hide)
+        attention_layout.addWidget(later)
+        attention_layout.addWidget(retry)
+        self.attention_card.hide()
+        layout.addWidget(self.attention_card)
+
+        paths_card = QFrame(objectName="card")
+        paths_layout = QVBoxLayout(paths_card)
+        paths_layout.addWidget(QLabel("本地数据位置", objectName="sectionTitle"))
+        profile_path = self.preferences.repository.load_core().browser.user_data_path
+        paths_layout.addWidget(QLabel(f"独立 Profile：{profile_path}", objectName="muted", wordWrap=True))
+        if history_store is not None:
+            paths_layout.addWidget(QLabel(f"价格数据库：{history_store.path}", objectName="muted", wordWrap=True))
+        if outputs_dir is not None:
+            open_outputs = QPushButton("打开报告目录")
+            open_outputs.clicked.connect(
+                lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(outputs_dir.resolve())))
+            )
+            paths_layout.addWidget(open_outputs, alignment=Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(paths_card)
         layout.addWidget(self.routes_label)
         self.runtime_label = QLabel("运行状态：等待启动", objectName="muted")
         layout.addWidget(self.runtime_label)
@@ -455,17 +518,27 @@ class SystemStatusPage(QWidget):
 
     def set_runtime(self, title: str, detail: str) -> None:
         self.runtime_label.setText(f"运行状态：{title}\n{detail}")
+        _set_health(self.service_health, title)
+        if title in {"本轮完成", "等待下轮", "最近完成"}:
+            _set_health(self.query_health, "最近查询正常")
+        elif title in {"运行异常", "需要人工处理"}:
+            _set_health(self.query_health, title)
 
+    def set_attention(self, leg_id: str, message: str) -> None:
+        self._attention_leg_id = leg_id
+        self.attention_text.setText(
+            f"航程 {leg_id} 需要人工处理。{message}\n"
+            "如当前为隐藏模式，请先开启“显示浏览器运行过程”，保存后再重新查询。"
+        )
+        self.attention_card.show()
 
-def _metric_card(title: str, value: str, detail: str) -> QFrame:
-    card = QFrame(objectName="card")
-    layout = QVBoxLayout(card)
-    layout.addWidget(QLabel(title, objectName="muted"))
-    label = QLabel(value, objectName="value")
-    label.setStyleSheet("font-size: 25px; font-weight: 700;")
-    layout.addWidget(label)
-    layout.addWidget(QLabel(detail, objectName="detail", wordWrap=True))
-    return card
+    def clear_attention(self) -> None:
+        self._attention_leg_id = None
+        self.attention_card.hide()
+
+    def _retry_attention(self) -> None:
+        if self._attention_leg_id and self.retry_leg:
+            self.retry_leg(self._attention_leg_id)
 
 
 def _actions(*actions: tuple[str, Callable[[], None]]) -> QWidget:
@@ -479,6 +552,18 @@ def _actions(*actions: tuple[str, Callable[[], None]]) -> QWidget:
         layout.addWidget(button)
     layout.addStretch()
     return widget
+
+
+def _health_card(title: str, value: str) -> QFrame:
+    card = QFrame(objectName="healthCard")
+    layout = QVBoxLayout(card)
+    layout.addWidget(QLabel(title, objectName="muted"))
+    layout.addWidget(QLabel(value, objectName="healthValue"))
+    return card
+
+
+def _set_health(card: QFrame, value: str) -> None:
+    card.findChild(QLabel, "healthValue").setText(value)
 
 
 def _market_name(route: LegConfig) -> str:

@@ -51,6 +51,7 @@ class MonitorService:
         sleep: Callable[[float], None] = time.sleep,
         now: Callable[[], datetime] = datetime.now,
         event_sink: MonitorEventSink | None = None,
+        should_continue: Callable[[], bool] = lambda: True,
     ):
         validate_enabled_leg_limit(legs)
         self.legs = [leg for leg in legs if leg.enabled]
@@ -60,6 +61,7 @@ class MonitorService:
         self.sleep = sleep
         self.now = now
         self.event_sink = event_sink or NullMonitorEventSink()
+        self.should_continue = should_continue
         self.consecutive_failures = 0
 
     def close(self) -> None:
@@ -183,6 +185,10 @@ class MonitorService:
         self._notify(lambda: self.event_sink.on_cycle_started(run_id, started_at, len(self.legs)))
         results: list[LegResult] = []
         for index, leg in enumerate(self.legs, start=1):
+            # A desktop pause is cooperative: finish the active browser operation,
+            # then stop before opening the next route.
+            if results and not self.should_continue():
+                break
             self._notify(lambda leg=leg, index=index: self.event_sink.on_leg_started(leg, index, len(self.legs)))
             previous = self.store.previous_minimum(leg.id, before=started_at)
             result = self._collect_with_retry(leg)
@@ -190,7 +196,7 @@ class MonitorService:
             results.append(result)
             self._notify(lambda result=result, index=index: self.event_sink.on_leg_finished(result, index, len(self.legs)))
 
-        confirmed_ids = self._confirm_thresholds(results)
+        confirmed_ids = self._confirm_thresholds(results) if self.should_continue() else set()
         self._attach_preferred_price_references(results, before=started_at)
         self._attach_flight_price_references(results, before=started_at)
         report = RunReport(

@@ -16,6 +16,7 @@ from ..ui.onboarding import OnboardingDialog
 from .airport_catalog import AirportCatalog
 from .controller import DesktopController
 from .event_bridge import CoordinatorEventBridge
+from .event_journal import AppEventJournal
 from .events import CoordinatorStateChanged
 from .monitor_coordinator import MonitorCoordinator
 from .preferences import PreferencesManager
@@ -77,6 +78,9 @@ def run_desktop(paths: AppPaths, *, start_hidden: bool = False) -> int:
         add_first_route = not controller.current_routes()
 
     coordinator = MonitorCoordinator(paths)
+    history_store = SQLiteStore(paths.database_path)
+    journal = AppEventJournal(history_store)
+    journal.initialize()
 
     window: MainWindow
 
@@ -89,25 +93,56 @@ def run_desktop(paths: AppPaths, *, start_hidden: bool = False) -> int:
             return False
         return coordinator.run_now()
 
+    def retry_if_ready(leg_id: str) -> bool:
+        current = preferences.load()
+        if preferences.selected_browser(current) is None:
+            message = "没有找到已选择的 Chrome 或 Edge，请先重新检测并保存。"
+            window.show_browser_settings(message)
+            QMessageBox.warning(window, "需要浏览器", message)
+            return False
+        return coordinator.retry_leg(leg_id)
+
     window = MainWindow(
         controller,
         catalog,
         browsers,
         preferences,
         on_run_now=run_if_ready,
-        history_store=SQLiteStore(paths.database_path),
+        on_pause=coordinator.pause,
+        on_resume=coordinator.resume,
+        on_retry_leg=retry_if_ready,
+        history_store=history_store,
         outputs_dir=paths.outputs_dir,
     )
-    controller.on_routes_changed(
-        lambda routes: run_if_ready() if any(route.enabled for route in routes) else coordinator.pause()
-    )
+
+    paused_for_no_routes = False
+
+    def routes_changed(routes: list[object]) -> None:
+        nonlocal paused_for_no_routes
+        enabled = sum(bool(getattr(route, "enabled", False)) for route in routes)
+        journal.record_routes_changed(enabled)
+        if enabled:
+            if paused_for_no_routes:
+                paused_for_no_routes = False
+                coordinator.resume()
+            else:
+                run_if_ready()
+        else:
+            was_paused = coordinator.snapshot().paused
+            coordinator.pause()
+            paused_for_no_routes = not was_paused
+
+    controller.on_routes_changed(routes_changed)
 
     def apply_runtime_settings(saved: object) -> None:
+        journal.record_settings_changed()
         coordinator.apply_settings()
+        window.refresh_from_history()
 
     window.runtime_settings_saved.connect(apply_runtime_settings)
     bridge = CoordinatorEventBridge(app)
     bridge.event_received.connect(window.handle_monitor_event, Qt.ConnectionType.QueuedConnection)
+    coordinator.subscribe(journal.record)
     coordinator.subscribe(bridge.publish)
     instance.set_activation_handler(window.activate)
     tray = _create_tray(app, window, coordinator)

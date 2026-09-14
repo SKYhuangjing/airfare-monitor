@@ -10,6 +10,9 @@ QPushButton:hover { background: #f2f7ff; }
 QPushButton#primary { background: #176be8; color: white; border: 0; font-weight: 700; }
 QPushButton#primary:hover { background: #0f59c7; }
 QFrame#card { background: white; border: 1px solid #e0e8f3; border-radius: 12px; }
+QFrame#metricCard { background: white; border: 1px solid #dce7f4; border-radius: 12px; min-height: 92px; }
+QFrame#healthCard { background: #f7fbff; border: 1px solid #d8e6f6; border-radius: 10px; min-height: 62px; }
+QFrame#warningCard { background: #fff7e8; border: 1px solid #f0c46d; border-radius: 10px; }
 QFrame#infoCard { background: #eef6ff; border: 1px solid #cfe1f8; border-radius: 10px; }
 QFrame#onboardingBrand { background: #0d315f; border: 0; }
 QWidget#onboardingContent { background: #f7faff; }
@@ -18,11 +21,16 @@ QLabel#onboardingTitle { color: #0d2b55; font-size: 30px; font-weight: 700; }
 QLabel#onboardingBrandTitle { color: white; font-size: 29px; font-weight: 700; }
 QLabel#onboardingBrandText { color: #d9e9ff; font-size: 15px; line-height: 1.6; }
 QLabel#sectionTitle { color: #15375f; font-size: 17px; font-weight: 700; }
+QLabel#metricValue { color: #102a56; font-size: 24px; font-weight: 700; }
+QLabel#healthValue { color: #15764b; font-size: 17px; font-weight: 700; }
+QLabel#runtimeStatus { color: #2670cf; font-size: 13px; }
 QLabel#warningText { color: #a64b00; background: #fff4df; border: 1px solid #f2c274; border-radius: 8px; padding: 10px; }
 QLabel#muted { color: #7287a6; }
 QLineEdit, QDateEdit, QTimeEdit, QComboBox, QSpinBox { border: 1px solid #bdcce0; border-radius: 7px; padding: 8px; background: white; min-height: 20px; }
 QLineEdit:focus, QDateEdit:focus, QTimeEdit:focus, QComboBox:focus { border: 2px solid #176be8; }
 QTableWidget { background: white; border: 1px solid #e0e8f3; border-radius: 10px; gridline-color: #eef3f8; }
+QTableWidget::item { padding: 6px; }
+QTableWidget::item:selected { background: #e8f2ff; color: #102a56; }
 QHeaderView::section { background: #f5f8fc; border: 0; padding: 9px; font-weight: 700; }
 QListWidget { border: 1px solid #d9e4f1; border-radius: 7px; background: white; }
 QCheckBox { spacing: 8px; padding: 5px 0; }

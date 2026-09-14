@@ -65,6 +65,27 @@ class FakeBrowser:
 
 
 class ServiceTests(unittest.TestCase):
+    def test_pause_finishes_current_leg_and_does_not_open_the_next_route(self):
+        with tempfile.TemporaryDirectory() as directory:
+            configured = [replace(route(), id=f"leg-{index}") for index in range(1, 4)]
+
+            class SuccessfulBrowser(FakeBrowser):
+                def collect(self, leg, now):
+                    self.calls += 1
+                    return LegResult(leg, LegStatus.SUCCESS, now(), completed_response=True)
+
+            browser = SuccessfulBrowser()
+            service = MonitorService(
+                configured,
+                settings(Path(directory)),
+                browser=browser,
+                now=lambda: datetime(2026, 8, 31, 10),
+                should_continue=lambda: browser.calls < 1,
+            )
+            report, _ = service.run_once()
+            self.assertEqual(browser.calls, 1)
+            self.assertEqual([item.leg.id for item in report.legs], ["leg-1"])
+
     def test_failed_leg_is_retried_once(self):
         with tempfile.TemporaryDirectory() as directory:
             browser = FakeBrowser()
