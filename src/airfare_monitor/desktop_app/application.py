@@ -7,10 +7,11 @@ from pathlib import Path
 
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QGuiApplication
-from PySide6.QtWidgets import QApplication, QDialog, QMenu, QMessageBox, QStyle, QSystemTrayIcon
+from PySide6.QtWidgets import QApplication, QDialog, QMenu, QMessageBox, QSystemTrayIcon
 
 from ..app_paths import AppPaths
 from ..storage import SQLiteStore
+from ..ui.app_icon import application_icon
 from ..ui.main_window import MainWindow
 from ..ui.onboarding import OnboardingDialog
 from .airport_catalog import AirportCatalog
@@ -31,6 +32,7 @@ def validate_ui_runtime(paths: AppPaths) -> str:
     initialize_desktop(paths)
     app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName("航价守望")
+    app.setWindowIcon(application_icon())
     _apply_style(app, paths.resource_root)
     catalog = AirportCatalog.load(paths.resource_root / "airports.zh.json")
     controller = DesktopController(RouteRepository(paths.routes_path))
@@ -56,6 +58,7 @@ def run_desktop(paths: AppPaths, *, start_hidden: bool = False) -> int:
     app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName("航价守望")
     app.setOrganizationName("AirfareMonitor")
+    app.setWindowIcon(application_icon())
     app.setQuitOnLastWindowClosed(False)
     _apply_style(app, paths.resource_root)
     catalog = AirportCatalog.load(paths.resource_root / "airports.zh.json")
@@ -173,9 +176,9 @@ def _apply_style(app: QApplication, resource_root: Path) -> None:
 
 
 def _create_tray(app: QApplication, window: MainWindow, coordinator: MonitorCoordinator) -> QSystemTrayIcon:
-    icon = app.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
+    icon = application_icon()
     tray = QSystemTrayIcon(icon, app)
-    tray.setToolTip("航价守望 · 等待监控")
+    tray.setToolTip("航价守望 · 等待监控（右键打开菜单）")
     menu = QMenu()
     open_action = menu.addAction("打开航价守望")
     open_action.triggered.connect(window.showNormal)

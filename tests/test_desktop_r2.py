@@ -20,6 +20,7 @@ from airfare_monitor.desktop_app.route_repository import RouteRepository
 from airfare_monitor.desktop_app.view_data import load_dashboard_data
 from airfare_monitor.models import EtdWindow, LegConfig
 from airfare_monitor.storage import SQLiteStore
+from airfare_monitor.ui.app_icon import application_icon
 from airfare_monitor.ui.history_page import HistoryPage, price_segments
 from airfare_monitor.ui.route_wizard import RouteWizard
 
@@ -44,6 +45,16 @@ class DesktopR2Tests(unittest.TestCase):
             price_segments(rows),
             [[(0, Decimal("1500")), (1, Decimal("1450"))], [(3, Decimal("1420"))]],
         )
+
+    def test_application_icon_contains_branded_tray_sizes(self):
+        icon = application_icon()
+        self.assertFalse(icon.isNull())
+        available = {(size.width(), size.height()) for size in icon.availableSizes()}
+        self.assertIn((16, 16), available)
+        self.assertIn((32, 32), available)
+        pixmap = icon.pixmap(64, 64)
+        self.assertFalse(pixmap.isNull())
+        self.assertGreater(pixmap.toImage().pixelColor(32, 32).lightness(), 200)
 
     def test_dashboard_data_uses_persisted_cny_totals_and_redacted_events(self):
         route = _route("route-1")
