@@ -8,8 +8,9 @@ from pathlib import Path
 from PySide6.QtCore import QUrl, Qt, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
-    QFrame, QHeaderView, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPushButton, QStackedWidget,
-    QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+    QFrame, QGridLayout, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QProgressBar,
+    QPushButton, QScrollArea, QSizePolicy, QStackedWidget, QTableWidget, QTableWidgetItem,
+    QVBoxLayout, QWidget,
 )
 
 from ..config import MAX_ENABLED_LEGS
@@ -28,6 +29,7 @@ from .dashboard_page import DashboardPage
 from .history_page import HistoryPage
 from .preferences import RuntimePreferencesForm, preference_card
 from .route_wizard import RouteWizard
+from .app_icon import application_icon
 from .. import __version__
 
 
@@ -106,22 +108,31 @@ class MainWindow(QMainWindow):
 
     def _make_sidebar(self) -> QWidget:
         sidebar = QFrame(objectName="sidebar")
-        sidebar.setFixedWidth(215)
+        sidebar.setFixedWidth(238)
         layout = QVBoxLayout(sidebar)
-        layout.setContentsMargins(0, 0, 0, 14)
-        brand = QLabel("✈  航价守望", objectName="brand")
-        tag = QLabel("看见更好的出行价格", objectName="tagline")
-        layout.addWidget(brand)
-        layout.addWidget(tag)
+        layout.setContentsMargins(12, 18, 12, 16)
+        brand_row = QHBoxLayout()
+        brand_row.setSpacing(10)
+        brand_icon = QLabel()
+        brand_icon.setPixmap(application_icon().pixmap(44, 44))
+        brand_row.addWidget(brand_icon)
+        brand_copy = QVBoxLayout()
+        brand_copy.setSpacing(0)
+        brand_copy.addWidget(QLabel("航价守望", objectName="brand"))
+        brand_copy.addWidget(QLabel("看见更好的出行价格", objectName="tagline"))
+        brand_row.addLayout(brand_copy, 1)
+        layout.addLayout(brand_row)
+        layout.addSpacing(18)
         self.nav_buttons: list[QPushButton] = []
-        for index, text in enumerate(("首页", "航程管理", "价格历史", "降价提醒", "系统状态")):
+        for index, text in enumerate(("概览", "我的航程", "历史价格", "通知设置", "系统状态")):
             button = QPushButton(text, objectName="navButton", checkable=True)
             button.clicked.connect(lambda checked=False, i=index: self._switch_page(i))
             layout.addWidget(button)
             self.nav_buttons.append(button)
         self.nav_buttons[0].setChecked(True)
         layout.addStretch()
-        layout.addWidget(QLabel("P0 内部试用版", objectName="muted", alignment=Qt.AlignmentFlag.AlignCenter))
+        layout.addWidget(QLabel("个人工具 · 最多监控 10 条", objectName="sidebarNote", alignment=Qt.AlignmentFlag.AlignCenter))
+        layout.addWidget(QLabel(f"v{__version__}", objectName="sidebarVersion", alignment=Qt.AlignmentFlag.AlignCenter))
         return sidebar
 
     def _switch_page(self, index: int) -> None:
@@ -302,51 +313,144 @@ class RoutesPage(QWidget):
         self.catalog = catalog
         self.routes: list[LegConfig] = []
         self._runtime_status: dict[str, str] = {}
+        self.cards: list[QFrame] = []
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(34, 30, 34, 30)
-        row = QHBoxLayout()
-        row.addWidget(QLabel("航程管理", objectName="pageTitle"))
-        row.addStretch()
-        self.capacity = QLabel(objectName="muted")
-        row.addWidget(self.capacity)
+        layout.setContentsMargins(30, 26, 30, 26)
+        layout.setSpacing(14)
+        header = QHBoxLayout()
+        heading = QVBoxLayout()
+        heading.addWidget(QLabel("我的航程", objectName="pageTitle"))
+        heading.addWidget(QLabel("管理需要持续关注的航程；复制的航程默认暂停。", objectName="muted"))
+        header.addLayout(heading)
+        header.addStretch()
         add = QPushButton("添加航程", objectName="primary")
         add.clicked.connect(self._new)
-        row.addWidget(add)
-        layout.addLayout(row)
-        layout.addWidget(QLabel("最多同时启用 10 条航程；暂停的航程会保留配置与历史。", objectName="muted"))
-        self.table = QTableWidget(0, 6)
-        self.table.setHorizontalHeaderLabels(["航程", "日期", "来源", "偏好", "状态", "操作"])
-        header = self.table.horizontalHeader()
-        for column in range(5):
-            header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
-        header.setMinimumSectionSize(72)
-        self.table.verticalHeader().setVisible(False)
-        layout.addWidget(self.table, 1)
+        header.addWidget(add)
+        layout.addLayout(header)
+
+        capacity_row = QHBoxLayout()
+        self.capacity = QLabel(objectName="capacityText")
+        capacity_row.addWidget(self.capacity)
+        self.capacity_bar = QProgressBar()
+        self.capacity_bar.setObjectName("capacityBar")
+        self.capacity_bar.setRange(0, MAX_ENABLED_LEGS)
+        self.capacity_bar.setTextVisible(False)
+        self.capacity_bar.setMaximumWidth(360)
+        capacity_row.addWidget(self.capacity_bar, 1)
+        capacity_row.addStretch()
+        layout.addLayout(capacity_row)
+
+        self.empty_label = QLabel(
+            "还没有航程。点击右上角“添加航程”，两分钟内即可开始监控。",
+            objectName="emptyState",
+            alignment=Qt.AlignmentFlag.AlignCenter,
+            wordWrap=True,
+        )
+        self.scroll = QScrollArea()
+        self.scroll.setObjectName("routeScroll")
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.cards_host = QWidget()
+        self.cards_grid = QGridLayout(self.cards_host)
+        self.cards_grid.setContentsMargins(0, 0, 0, 0)
+        self.cards_grid.setHorizontalSpacing(14)
+        self.cards_grid.setVerticalSpacing(14)
+        self.cards_grid.setColumnStretch(0, 1)
+        self.cards_grid.setColumnStretch(1, 1)
+        self.cards_grid.setRowStretch(99, 1)
+        self.scroll.setWidget(self.cards_host)
+        layout.addWidget(self.empty_label, 1)
+        layout.addWidget(self.scroll, 1)
 
     def refresh(self, routes: list[LegConfig]) -> None:
         self.routes = routes
         enabled = sum(route.enabled for route in routes)
-        self.capacity.setText(f"已启用 {enabled} / {MAX_ENABLED_LEGS}")
-        self.table.setRowCount(len(routes))
-        for row, route in enumerate(routes):
-            source = "同程（国内）" if _market_name(route) == "domestic" else "去哪儿（国际/跨境）"
-            values = [
-                f"{route.origin_name_zh or route.origin_airport_iata} {route.origin_airport_iata} → {route.destination_name_zh or route.destination_airport_iata} {route.destination_airport_iata}",
-                route.departure_date.isoformat() + (f" / {route.return_date.isoformat()}" if route.return_date else ""),
-                source,
-                "直达" if route.direct_only else f"中转 ≤ {route.max_layover_minutes} 分钟",
-                self._runtime_status.get(route.id, "启用" if route.enabled else "暂停"),
-            ]
-            for column, value in enumerate(values):
-                self.table.setItem(row, column, QTableWidgetItem(value))
-            self.table.setCellWidget(row, 5, _actions(
-                ("编辑", lambda checked=False, item=route: self._edit(item)),
-                ("暂停" if route.enabled else "启用", lambda checked=False, item=route: self._toggle(item)),
-                ("复制", lambda checked=False, item=route: self._copy(item)),
-                ("删除", lambda checked=False, item=route: self._delete(item)),
-            ))
-        self.table.resizeRowsToContents()
+        self.capacity.setText(f"已启用 {enabled} / {MAX_ENABLED_LEGS} 个航程")
+        self.capacity_bar.setValue(enabled)
+        for card in self.cards:
+            self.cards_grid.removeWidget(card)
+            card.deleteLater()
+        self.cards.clear()
+        self.empty_label.setVisible(not routes)
+        self.scroll.setVisible(bool(routes))
+        for index, route in enumerate(routes):
+            card = self._route_card(route)
+            self.cards.append(card)
+            self.cards_grid.addWidget(card, index // 2, index % 2)
+
+    def _route_card(self, route: LegConfig) -> QFrame:
+        card = QFrame(objectName="routeCard")
+        card.setMinimumHeight(300)
+        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(20, 17, 20, 15)
+        layout.setSpacing(11)
+
+        top = QHBoxLayout()
+        state = QLabel("运行中" if route.enabled else "已暂停")
+        state.setObjectName("activePill" if route.enabled else "pausedPill")
+        top.addWidget(state)
+        top.addStretch()
+        toggle = QPushButton("暂停" if route.enabled else "启用", objectName="routeToggle")
+        toggle.clicked.connect(lambda checked=False, item=route: self._toggle(item))
+        top.addWidget(toggle)
+        layout.addLayout(top)
+
+        route_row = QHBoxLayout()
+        route_row.addLayout(_airport_block(route.origin_name_zh, route.origin_airport_iata))
+        route_row.addStretch()
+        route_row.addWidget(QLabel("✈  →" if not route.return_date else "✈  ⇄", objectName="routeArrow"))
+        route_row.addStretch()
+        route_row.addLayout(_airport_block(route.destination_name_zh, route.destination_airport_iata))
+        layout.addLayout(route_row)
+
+        tags = QHBoxLayout()
+        source = "国内 · 同程" if _market_name(route) == "domestic" else "国际/跨境 · 去哪儿"
+        source_label = QLabel(source, objectName="sourcePill")
+        trip_label = QLabel("往返" if route.return_date else "单程", objectName="neutralPill")
+        tags.addWidget(source_label)
+        tags.addWidget(trip_label)
+        tags.addStretch()
+        layout.addLayout(tags)
+
+        summary = QFrame(objectName="routeSummary")
+        details = QGridLayout(summary)
+        details.setContentsMargins(13, 11, 13, 11)
+        details.setHorizontalSpacing(14)
+        details.setVerticalSpacing(7)
+        date_text = route.departure_date.isoformat()
+        if route.return_date:
+            date_text += f" — {route.return_date.isoformat()}"
+        time_text = f"{route.etd_window.start.strftime('%H:%M')} — {route.etd_window.end.strftime('%H:%M')}"
+        preference = "仅直达" if route.direct_only else f"允许中转 · 最长 {route.max_layover_minutes or 0} 分钟"
+        threshold = _price_text(route.expected_total_price_cny) if route.expected_total_price_cny is not None else "仅观察"
+        _add_detail(details, 0, 0, "出行日期", date_text)
+        _add_detail(details, 1, 0, "出发时段", time_text)
+        _add_detail(details, 0, 1, "行程偏好", preference)
+        _add_detail(details, 1, 1, "心理价位", threshold)
+        layout.addWidget(summary)
+
+        latest = self._runtime_status.get(route.id, "等待首次查询" if route.enabled else "监控已暂停")
+        latest_row = QHBoxLayout()
+        latest_row.addWidget(QLabel("最近状态", objectName="muted"))
+        latest_value = QLabel(latest, objectName="routeLatest")
+        latest_row.addWidget(latest_value)
+        latest_row.addStretch()
+        layout.addLayout(latest_row)
+
+        footer = QHBoxLayout()
+        edit = QPushButton("编辑", objectName="routeAction")
+        edit.clicked.connect(lambda checked=False, item=route: self._edit(item))
+        copy = QPushButton("复制", objectName="routeAction")
+        copy.clicked.connect(lambda checked=False, item=route: self._copy(item))
+        delete = QPushButton("删除", objectName="dangerAction")
+        delete.clicked.connect(lambda checked=False, item=route: self._delete(item))
+        footer.addWidget(edit)
+        footer.addWidget(copy)
+        footer.addStretch()
+        footer.addWidget(delete)
+        layout.addLayout(footer)
+        return card
 
     def set_leg_status(self, leg_id: str, status: str) -> None:
         self._runtime_status[leg_id] = status
@@ -545,18 +649,20 @@ class SystemStatusPage(QWidget):
             self.retry_leg(self._attention_leg_id)
 
 
-def _actions(*actions: tuple[str, Callable[[], None]]) -> QWidget:
-    widget = QWidget()
-    layout = QHBoxLayout(widget)
-    layout.setContentsMargins(4, 2, 4, 2)
-    layout.setSpacing(6)
-    for label, callback in actions:
-        button = QPushButton(label, objectName="tableAction")
-        button.setMinimumSize(62, 30)
-        button.clicked.connect(callback)
-        layout.addWidget(button)
-    layout.addStretch()
-    return widget
+def _airport_block(name: str | None, iata: str) -> QVBoxLayout:
+    layout = QVBoxLayout()
+    layout.setSpacing(0)
+    layout.addWidget(QLabel(name or iata, objectName="routeCity"))
+    layout.addWidget(QLabel(iata, objectName="routeCode"))
+    return layout
+
+
+def _add_detail(layout: QGridLayout, row: int, column: int, title: str, value: str) -> None:
+    block = QVBoxLayout()
+    block.setSpacing(2)
+    block.addWidget(QLabel(title, objectName="detailLabel"))
+    block.addWidget(QLabel(value, objectName="detailValue"))
+    layout.addLayout(block, row, column)
 
 
 def _health_card(title: str, value: str) -> QFrame:

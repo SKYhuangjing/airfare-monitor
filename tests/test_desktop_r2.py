@@ -9,7 +9,7 @@ from tempfile import TemporaryDirectory
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QHeaderView, QPushButton
+from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 
 from airfare_monitor.app_paths import AppPaths
 from airfare_monitor.desktop_app.airport_catalog import AirportCatalog
@@ -57,7 +57,7 @@ class DesktopR2Tests(unittest.TestCase):
         self.assertFalse(pixmap.isNull())
         self.assertGreater(pixmap.toImage().pixelColor(32, 32).lightness(), 200)
 
-    def test_route_actions_have_visible_labels_and_a_stretching_column(self):
+    def test_route_cards_show_existing_actions_and_capacity(self):
         with TemporaryDirectory() as temp:
             paths = _paths(temp)
             paths.initialize()
@@ -65,15 +65,15 @@ class DesktopR2Tests(unittest.TestCase):
             catalog = AirportCatalog.load(paths.resource_root / "airports.zh.json")
             page = RoutesPage(controller, catalog)
             page.refresh([_route("route-1")])
-            self.assertEqual(page.table.columnCount(), 6)
-            self.assertEqual(
-                page.table.horizontalHeader().sectionResizeMode(5),
-                QHeaderView.ResizeMode.Stretch,
-            )
-            action_cell = page.table.cellWidget(0, 5)
-            buttons = action_cell.findChildren(QPushButton)
-            self.assertEqual([button.text() for button in buttons], ["编辑", "暂停", "复制", "删除"])
-            self.assertTrue(all(button.minimumWidth() >= 62 for button in buttons))
+            self.assertEqual(page.capacity.text(), "已启用 1 / 10 个航程")
+            self.assertEqual(page.capacity_bar.value(), 1)
+            self.assertEqual(len(page.cards), 1)
+            buttons = page.cards[0].findChildren(QPushButton)
+            self.assertEqual({button.text() for button in buttons}, {"编辑", "暂停", "复制", "删除"})
+            labels = {label.text() for label in page.cards[0].findChildren(QLabel)}
+            self.assertIn("PVG", labels)
+            self.assertIn("KUL", labels)
+            self.assertIn("国际/跨境 · 去哪儿", labels)
             page.close()
 
     def test_dashboard_data_uses_persisted_cny_totals_and_redacted_events(self):

@@ -47,7 +47,8 @@ class DashboardPage(QWidget):
         layout.setSpacing(14)
         title_row = QHBoxLayout()
         heading = QVBoxLayout()
-        heading.addWidget(QLabel("航价概览", objectName="pageTitle"))
+        heading.addWidget(QLabel(_greeting(), objectName="pageTitle"))
+        heading.addWidget(QLabel("航价守望与您一起，发现更好的出行时机。", objectName="muted"))
         self.runtime_label = QLabel("等待配置", objectName="runtimeStatus")
         heading.addWidget(self.runtime_label)
         title_row.addLayout(heading)
@@ -230,6 +231,17 @@ def _friendly_time(value: datetime | None) -> str:
     if value is None:
         return "—"
     return value.strftime("%m-%d %H:%M")
+
+
+def _greeting(now: datetime | None = None) -> str:
+    hour = (now or datetime.now()).hour
+    if hour < 6:
+        return "夜深了，旅行家"
+    if hour < 12:
+        return "早上好，旅行家"
+    if hour < 18:
+        return "下午好，旅行家"
+    return "晚上好，旅行家"
 
 
 def _parse_time(value: object) -> datetime | None:

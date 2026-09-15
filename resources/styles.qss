@@ -1,16 +1,40 @@
 * { font-family: "Microsoft YaHei UI", "Segoe UI"; color: #102a56; }
 QMainWindow { background: #f5f8fc; }
 QWidget#sidebar { background: #ffffff; border-right: 1px solid #dce5f2; }
-QLabel#brand { color: #0b4ca8; font-size: 23px; font-weight: 700; padding: 18px 16px 4px 16px; }
-QLabel#tagline { color: #7690b3; padding: 0 16px 18px 16px; }
-QPushButton#navButton { text-align: left; border: 0; border-radius: 8px; padding: 11px 16px; margin: 2px 10px; font-size: 14px; }
+QLabel#brand { color: #0b4ca8; font-size: 22px; font-weight: 700; padding: 0; }
+QLabel#tagline { color: #7690b3; padding: 0; }
+QLabel#sidebarNote { color: #7690b3; padding-top: 8px; }
+QLabel#sidebarVersion { color: #9aabc1; font-size: 11px; }
+QPushButton#navButton { text-align: left; border: 0; border-radius: 9px; padding: 12px 16px; margin: 2px 0; font-size: 14px; }
 QPushButton#navButton:checked { background: #e8f1ff; color: #1265db; font-weight: 700; }
 QPushButton { border: 1px solid #cdd9e9; border-radius: 7px; background: #ffffff; padding: 8px 14px; }
 QPushButton:hover { background: #f2f7ff; }
 QPushButton#primary { background: #176be8; color: white; border: 0; font-weight: 700; }
 QPushButton#primary:hover { background: #0f59c7; }
 QPushButton#tableAction { padding: 5px 9px; min-width: 42px; }
+QPushButton#routeAction, QPushButton#routeToggle { padding: 6px 13px; min-width: 48px; }
+QPushButton#dangerAction { padding: 6px 13px; color: #d13b45; border-color: #f0c8cc; }
+QPushButton#dangerAction:hover { background: #fff1f2; }
 QFrame#card { background: white; border: 1px solid #e0e8f3; border-radius: 12px; }
+QFrame#routeCard { background: white; border: 1px solid #dce6f2; border-radius: 12px; }
+QFrame#routeCard:hover { border-color: #9fc3f2; }
+QFrame#routeSummary { background: #f6f9fd; border: 0; border-radius: 8px; }
+QScrollArea#routeScroll { background: transparent; border: 0; }
+QScrollArea#routeScroll > QWidget > QWidget { background: transparent; }
+QProgressBar#capacityBar { border: 0; border-radius: 4px; background: #e4ebf4; height: 8px; }
+QProgressBar#capacityBar::chunk { border-radius: 4px; background: #2878eb; }
+QLabel#capacityText { color: #314f78; font-weight: 700; }
+QLabel#emptyState { color: #7287a6; background: white; border: 1px dashed #c7d5e7; border-radius: 12px; padding: 36px; }
+QLabel#activePill { color: #0b8f5a; background: #e4f8ef; border-radius: 10px; padding: 4px 10px; font-weight: 700; }
+QLabel#pausedPill { color: #64748b; background: #e9eef4; border-radius: 10px; padding: 4px 10px; font-weight: 700; }
+QLabel#sourcePill { color: #1769df; background: #e7f1ff; border-radius: 8px; padding: 4px 9px; }
+QLabel#neutralPill { color: #52677f; background: #eef2f7; border-radius: 8px; padding: 4px 9px; }
+QLabel#routeCity { color: #263f63; font-size: 14px; font-weight: 700; }
+QLabel#routeCode { color: #0e2447; font-size: 27px; font-weight: 800; }
+QLabel#routeArrow { color: #1f65c8; font-size: 20px; font-weight: 700; }
+QLabel#detailLabel { color: #7287a6; font-size: 12px; }
+QLabel#detailValue { color: #213b60; font-weight: 600; }
+QLabel#routeLatest { color: #1467d2; font-weight: 700; }
 QFrame#metricCard { background: white; border: 1px solid #dce7f4; border-radius: 12px; min-height: 92px; }
 QFrame#healthCard { background: #f7fbff; border: 1px solid #d8e6f6; border-radius: 10px; min-height: 62px; }
 QFrame#warningCard { background: #fff7e8; border: 1px solid #f0c46d; border-radius: 10px; }
@@ -24,7 +48,7 @@ QLabel#onboardingBrandText { color: #d9e9ff; font-size: 15px; line-height: 1.6; 
 QLabel#sectionTitle { color: #15375f; font-size: 17px; font-weight: 700; }
 QLabel#metricValue { color: #102a56; font-size: 24px; font-weight: 700; }
 QLabel#healthValue { color: #15764b; font-size: 17px; font-weight: 700; }
-QLabel#runtimeStatus { color: #2670cf; font-size: 13px; }
+QLabel#runtimeStatus { color: #2670cf; font-size: 13px; padding-top: 2px; }
 QLabel#warningText { color: #a64b00; background: #fff4df; border: 1px solid #f2c274; border-radius: 8px; padding: 10px; }
 QLabel#muted { color: #7287a6; }
 QLineEdit, QDateEdit, QTimeEdit, QComboBox, QSpinBox { border: 1px solid #bdcce0; border-radius: 7px; padding: 8px; background: white; min-height: 20px; }
