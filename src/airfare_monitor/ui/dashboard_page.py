@@ -8,13 +8,11 @@ from decimal import Decimal
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -44,17 +42,24 @@ class DashboardPage(QWidget):
         self._running = False
         self._open_results = open_results
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(30, 26, 30, 26)
-        layout.setSpacing(14)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        host = QWidget()
+        layout = QVBoxLayout(host)
+        layout.setContentsMargins(30, 28, 30, 28)
+        layout.setSpacing(20)
         title_row = QHBoxLayout()
         heading = QVBoxLayout()
         heading.addWidget(QLabel(_greeting(), objectName="pageTitle"))
         heading.addWidget(QLabel("航价守望与您一起，发现更好的出行时机。", objectName="muted"))
-        self.runtime_label = QLabel("等待配置", objectName="runtimeStatus")
-        heading.addWidget(self.runtime_label)
+        heading.setSpacing(4)
         title_row.addLayout(heading)
         title_row.addStretch()
+        self.runtime_label = QLabel("●  等待配置", objectName="runtimeStatus")
+        self.runtime_label.setMaximumWidth(150)
+        title_row.addWidget(self.runtime_label)
         self.pause_button = QPushButton("暂停监控")
         self.pause_button.clicked.connect(toggle_pause)
         self.run_button = QPushButton("立即查询")
@@ -65,44 +70,47 @@ class DashboardPage(QWidget):
         title_row.addWidget(self.run_button)
         title_row.addWidget(add)
         layout.addLayout(title_row)
+        self.runtime_detail_label = QLabel("设置航程后可启动监控", objectName="muted", wordWrap=True)
+        layout.addWidget(self.runtime_detail_label)
 
         metrics = QHBoxLayout()
-        self.today_card = _metric_card("今日最低价", "暂无数据", "启用航程的 CNY 含税总价")
-        self.count_card = _metric_card("已启用航程", "0 / 10", "严格使用单浏览器串行查询")
-        self.success_card = _metric_card("最近成功", "暂无记录", "尚未取得有效完整结果")
-        self.attention_card = _metric_card("需要处理", "0", "当前没有待处理航程")
+        metrics.setSpacing(12)
+        self.today_card = _metric_card("◆", "今日最低价", "暂无数据", "启用航程的 CNY 含税总价", "green")
+        self.count_card = _metric_card("✈", "已启用航程", "0 / 10", "严格使用单浏览器串行查询", "blue")
+        self.success_card = _metric_card("◷", "最近成功", "暂无记录", "尚未取得有效完整结果", "violet")
+        self.attention_card = _metric_card("!", "需要处理", "0", "当前没有待处理航程", "amber")
         for card in (self.today_card, self.count_card, self.success_card, self.attention_card):
             metrics.addWidget(card, 1)
         layout.addLayout(metrics)
 
+        body = QHBoxLayout()
+        body.setSpacing(16)
+        routes_section = QVBoxLayout()
         route_header = QHBoxLayout()
         route_header.addWidget(QLabel("航程监控", objectName="sectionTitle"))
         route_header.addStretch()
-        all_routes = QPushButton("查看全部航程")
+        all_routes = QPushButton("查看全部航程  →", objectName="linkButton")
         all_routes.clicked.connect(open_routes)
         route_header.addWidget(all_routes)
-        layout.addLayout(route_header)
-        self.route_table = QTableWidget(0, 8)
-        self.route_table.setHorizontalHeaderLabels(
-            ["航程", "日期与来源", "筛选", "最新含税价", "变化/心理价位", "状态", "更新时间", "操作"]
-        )
-        self.route_table.horizontalHeader().setStretchLastSection(True)
-        self.route_table.verticalHeader().setVisible(False)
-        self.route_table.verticalHeader().setDefaultSectionSize(50)
-        self.route_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.route_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.route_table.setMinimumHeight(190)
-        layout.addWidget(self.route_table, 1)
+        routes_section.addLayout(route_header)
+        routes_section.addWidget(QLabel("关注含税价格，也能随时查看本轮全部航班候选。", objectName="muted"))
+        self.route_cards = QVBoxLayout()
+        self.route_cards.setSpacing(12)
+        routes_section.addLayout(self.route_cards)
+        routes_section.addStretch()
+        body.addLayout(routes_section, 3)
 
-        layout.addWidget(QLabel("最近动态", objectName="sectionTitle"))
-        self.event_table = QTableWidget(0, 2)
-        self.event_table.setHorizontalHeaderLabels(["时间", "动态"])
-        self.event_table.horizontalHeader().setStretchLastSection(True)
-        self.event_table.verticalHeader().setVisible(False)
-        self.event_table.verticalHeader().setDefaultSectionSize(36)
-        self.event_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.event_table.setMaximumHeight(170)
-        layout.addWidget(self.event_table)
+        events_section = QVBoxLayout()
+        events_section.addWidget(QLabel("最近动态", objectName="sectionTitle"))
+        events_section.addWidget(QLabel("每一次查询和需要处理的事件", objectName="muted"))
+        self.event_cards = QVBoxLayout()
+        self.event_cards.setSpacing(9)
+        events_section.addLayout(self.event_cards)
+        events_section.addStretch()
+        body.addLayout(events_section, 2)
+        layout.addLayout(body, 1)
+        scroll.setWidget(host)
+        outer.addWidget(scroll)
         self._sync_controls()
 
     def refresh(self, routes: list[LegConfig]) -> None:
@@ -140,7 +148,8 @@ class DashboardPage(QWidget):
         self._runtime_title = title
         self._runtime_detail = detail
         suffix = f" · 下次查询 {_friendly_time(self._next_run)}" if self._next_run else ""
-        self.runtime_label.setText(f"{title} · {detail}{suffix}")
+        self.runtime_label.setText(f"●  {title}")
+        self.runtime_detail_label.setText(f"{detail}{suffix}")
 
     def set_runtime_message(self, message: str) -> None:
         self.set_runtime("正在准备", message)
@@ -165,54 +174,85 @@ class DashboardPage(QWidget):
         self.pause_button.setText("继续监控" if self._paused else "暂停监控")
 
     def _render_routes(self) -> None:
-        self.route_table.setRowCount(len(self._routes))
+        _clear_layout(self.route_cards)
         overviews = self._data.routes if self._data else {}
-        for row, route in enumerate(self._routes):
+        if not self._routes:
+            empty = QLabel("还没有航程。点击“添加航程”，开始关注你的第一段旅程。", objectName="emptyState", wordWrap=True)
+            self.route_cards.addWidget(empty)
+            return
+        for route in self._routes[:5]:
             overview = overviews.get(route.id)
-            route_text = f"{route.origin_airport_iata} → {route.destination_airport_iata}"
+            card = QFrame(objectName="routeCard")
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(17, 13, 17, 12)
+            card_layout.setSpacing(8)
+            top = QHBoxLayout()
+            route_text = f"{route.origin_airport_iata}  →  {route.destination_airport_iata}"
+            top.addWidget(QLabel(route_text, objectName="routeCode"))
+            top.addStretch()
+            status = _status_text(overview.status) if overview else ("等待查询" if route.enabled else "已暂停")
+            if not route.enabled:
+                status = "已暂停"
+            top.addWidget(QLabel(status, objectName="activePill" if status == "查询成功" else "pausedPill"))
+            card_layout.addLayout(top)
             dates = route.departure_date.isoformat()
             if route.return_date:
                 dates += f" / {route.return_date.isoformat()}"
             source = "国内 · 同程" if _market(route) == "domestic" else "国际/跨境 · 去哪儿"
-            filter_text = "直达" if route.direct_only else f"中转≤{route.max_layover_minutes}分钟"
+            card_layout.addWidget(QLabel(f"{route.origin_name_zh or route.origin_airport_iata} → {route.destination_name_zh or route.destination_airport_iata}  ·  {dates}  ·  {source}", objectName="muted", wordWrap=True))
+            bottom = QHBoxLayout()
+            bottom.addWidget(QLabel("最低含税总价", objectName="detailLabel"))
             price = _price_text(overview.minimum_total_cny) if overview and overview.minimum_total_cny is not None else "—"
-            delta = _delta_text(overview.change_cny if overview else None)
-            threshold = _price_text(route.expected_total_price_cny) if route.expected_total_price_cny is not None else "仅观察"
-            change = f"{delta} / 心理 {threshold}"
-            status = _status_text(overview.status) if overview else ("等待查询" if route.enabled else "已暂停")
-            if not route.enabled:
-                status = "已暂停"
-            updated = _friendly_time(overview.captured_at) if overview and overview.captured_at else "—"
-            values = [route_text, f"{dates}\n{source}", filter_text, price, change, status, updated]
-            for column, value in enumerate(values):
-                item = QTableWidgetItem(value)
-                if column == 3:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                self.route_table.setItem(row, column, item)
-            action = QPushButton("查看候选", objectName="tableAction")
-            action.setMinimumWidth(76)
+            bottom.addWidget(QLabel(price, objectName="metricValue"))
+            bottom.addStretch()
+            action = QPushButton("查看航班候选  →", objectName="linkButton")
             action.clicked.connect(lambda checked=False, item=route: self._open_results(item))
-            self.route_table.setCellWidget(row, 7, action)
-        self.route_table.resizeColumnsToContents()
+            bottom.addWidget(action)
+            card_layout.addLayout(bottom)
+            threshold = _price_text(route.expected_total_price_cny) if route.expected_total_price_cny is not None else "仅观察"
+            updated = _friendly_time(overview.captured_at) if overview and overview.captured_at else "—"
+            card_layout.addWidget(QLabel(f"{_delta_text(overview.change_cny if overview else None)}  ·  心理价位 {threshold}  ·  更新 {updated}", objectName="muted", wordWrap=True))
+            self.route_cards.addWidget(card)
+        if len(self._routes) > 5:
+            self.route_cards.addWidget(QLabel(f"还有 {len(self._routes) - 5} 条航程，可在“我的航程”中查看。", objectName="muted"))
 
     def _render_events(self) -> None:
+        _clear_layout(self.event_cards)
         events = self._data.recent_events if self._data else ()
-        self.event_table.setRowCount(len(events))
-        for row, event in enumerate(events):
+        if not events:
+            self.event_cards.addWidget(QLabel("暂无动态。完成查询后，运行记录会显示在这里。", objectName="emptyState", wordWrap=True))
+            return
+        for event in events[:8]:
             occurred = _parse_time(event.get("occurred_at"))
-            self.event_table.setItem(row, 0, QTableWidgetItem(_friendly_time(occurred) if occurred else "—"))
-            self.event_table.setItem(row, 1, QTableWidgetItem(str(event.get("message", ""))))
-        self.event_table.resizeColumnToContents(0)
+            entry = QFrame(objectName="card")
+            entry_layout = QVBoxLayout(entry)
+            entry_layout.setContentsMargins(13, 10, 13, 10)
+            entry_layout.addWidget(QLabel(_friendly_time(occurred) if occurred else "—", objectName="detailLabel"))
+            entry_layout.addWidget(QLabel(str(event.get("message", "")), wordWrap=True))
+            self.event_cards.addWidget(entry)
 
 
-def _metric_card(title: str, value: str, detail: str) -> QFrame:
+def _metric_card(icon: str, title: str, value: str, detail: str, accent: str) -> QFrame:
     card = QFrame(objectName="metricCard")
+    card.setProperty("accent", accent)
     layout = QVBoxLayout(card)
-    layout.addWidget(QLabel(title, objectName="muted"))
+    layout.setContentsMargins(16, 13, 16, 13)
+    icon_row = QHBoxLayout()
+    icon_row.addWidget(QLabel(icon, objectName="metricIcon"))
+    icon_row.addWidget(QLabel(title, objectName="muted"))
+    icon_row.addStretch()
+    layout.addLayout(icon_row)
     value_label = QLabel(value, objectName="metricValue")
     layout.addWidget(value_label)
     layout.addWidget(QLabel(detail, objectName="detail", wordWrap=True))
     return card
+
+
+def _clear_layout(layout: QVBoxLayout) -> None:
+    while layout.count():
+        item = layout.takeAt(0)
+        if widget := item.widget():
+            widget.deleteLater()
 
 
 def _set_metric(card: QFrame, value: str, detail: str) -> None:

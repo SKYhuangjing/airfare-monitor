@@ -32,7 +32,7 @@ class PriceChart(QWidget):
         super().__init__()
         self.rows: list[dict[str, object]] = []
         self.threshold: Decimal | None = None
-        self.setMinimumHeight(260)
+        self.setMinimumHeight(310)
 
     def set_series(self, rows: list[dict[str, object]], threshold: Decimal | None) -> None:
         self.rows = list(rows)
@@ -89,7 +89,7 @@ class PriceChart(QWidget):
                 f"心理价位 ¥{self.threshold:,.0f}",
             )
 
-        painter.setPen(QPen(QColor("#1673e6"), 2.5))
+        painter.setPen(QPen(QColor("#176fe4"), 3))
         for segment in price_segments(self.rows):
             path = QPainterPath()
             for position, (index, value) in enumerate(segment):
@@ -102,7 +102,7 @@ class PriceChart(QWidget):
             for index, value in segment:
                 current = point(index, value)
                 painter.setBrush(QColor("#ffffff"))
-                painter.drawEllipse(current, 3.5, 3.5)
+                painter.drawEllipse(current, 4, 4)
 
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor("#e14c4c"))
@@ -138,17 +138,17 @@ class HistoryPage(QWidget):
         self.hours = 24
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(30, 26, 30, 26)
-        layout.setSpacing(14)
+        layout.setContentsMargins(30, 28, 30, 28)
+        layout.setSpacing(17)
         title_row = QHBoxLayout()
         heading = QVBoxLayout()
         heading.addWidget(QLabel("历史价格", objectName="pageTitle"))
         heading.addWidget(QLabel("查看航程在不同时间的 CNY 含税总价变化", objectName="muted"))
         title_row.addLayout(heading)
         title_row.addStretch()
-        report_button = QPushButton("打开最新 Excel")
+        report_button = QPushButton("▤  打开最新 Excel")
         report_button.clicked.connect(open_latest_report)
-        folder_button = QPushButton("打开报告目录")
+        folder_button = QPushButton("▣  打开报告目录")
         folder_button.clicked.connect(self.open_output_directory)
         title_row.addWidget(report_button)
         title_row.addWidget(folder_button)
@@ -160,7 +160,7 @@ class HistoryPage(QWidget):
         filters.addWidget(self.route_combo, 1)
         self.period_group = QButtonGroup(self)
         for label, hours in (("最近 24 小时", 24), ("最近 7 天", 24 * 7)):
-            button = QPushButton(label, checkable=True)
+            button = QPushButton(label, objectName="periodButton", checkable=True)
             button.setProperty("hours", hours)
             button.clicked.connect(lambda checked=False, value=hours: self.set_period(value))
             self.period_group.addButton(button)
@@ -170,9 +170,9 @@ class HistoryPage(QWidget):
         layout.addLayout(filters)
 
         metrics = QHBoxLayout()
-        self.current_card = _history_metric("当前", "—")
-        self.minimum_card = _history_metric("最低", "—")
-        self.maximum_card = _history_metric("最高", "—")
+        self.current_card = _history_metric("当前含税价", "—", "blue")
+        self.minimum_card = _history_metric("区间最低", "—", "green")
+        self.maximum_card = _history_metric("区间最高", "—", "amber")
         for card in (self.current_card, self.minimum_card, self.maximum_card):
             metrics.addWidget(card, 1)
         layout.addLayout(metrics)
@@ -181,6 +181,7 @@ class HistoryPage(QWidget):
         chart_card = QFrame(objectName="card")
         chart_layout = QVBoxLayout(chart_card)
         chart_layout.addWidget(QLabel("含税总价（CNY）", objectName="sectionTitle"))
+        chart_layout.addWidget(QLabel("●  有效价格        ●  未获得有效价格        ┄  心理价位", objectName="muted"))
         self.chart = PriceChart()
         chart_layout.addWidget(self.chart, 1)
         self.chart_note = QLabel("蓝线为有效价格；红点表示查询失败或未取得有效价格。", objectName="muted")
@@ -273,9 +274,11 @@ def price_segments(rows: list[dict[str, object]]) -> list[list[tuple[int, Decima
     return segments
 
 
-def _history_metric(title: str, value: str) -> QFrame:
+def _history_metric(title: str, value: str, accent: str) -> QFrame:
     card = QFrame(objectName="metricCard")
+    card.setProperty("accent", accent)
     layout = QVBoxLayout(card)
+    layout.setContentsMargins(18, 15, 18, 15)
     layout.addWidget(QLabel(title, objectName="muted"))
     layout.addWidget(QLabel(value, objectName="metricValue"))
     return card

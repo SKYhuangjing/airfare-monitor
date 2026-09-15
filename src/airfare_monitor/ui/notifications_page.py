@@ -7,7 +7,7 @@ from dataclasses import replace
 from PySide6.QtCore import QObject, QThread, Signal, Qt
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QFormLayout, QFrame, QHBoxLayout, QLabel,
-    QLineEdit, QMessageBox, QPushButton, QScrollArea, QSpinBox, QVBoxLayout,
+    QGridLayout, QLineEdit, QMessageBox, QPushButton, QScrollArea, QSpinBox, QVBoxLayout,
     QWidget,
 )
 
@@ -54,20 +54,26 @@ class NotificationsPage(QWidget):
         self._pending_secret: str | None = None
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(30, 24, 30, 24)
+        root.setContentsMargins(30, 27, 30, 27)
+        root.setSpacing(9)
         root.addWidget(QLabel("通知设置", objectName="pageTitle"))
-        root.addWidget(QLabel("低价和异常可通过桌面提醒；邮件由你自己的邮箱账号发送。", objectName="muted"))
+        root.addWidget(QLabel("只在重要变化时提醒你；桌面和邮件可独立启用。", objectName="muted"))
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         host = QWidget()
         layout = QVBoxLayout(host)
-        layout.setSpacing(14)
+        layout.setSpacing(17)
 
-        desktop_card = _card("桌面通知")
+        desktop_card = _card("▣  桌面通知")
         self.desktop_toggle = QCheckBox("开启桌面通知")
         self.desktop_toggle.setChecked(preferences.load().desktop_notifications)
         desktop_card.layout().addWidget(self.desktop_toggle)
+        events = QHBoxLayout()
+        for event_name in ("低价命中", "查询失败", "需要人工处理", "邮件失败"):
+            events.addWidget(QLabel(event_name, objectName="sourcePill"))
+        events.addStretch()
+        desktop_card.layout().addLayout(events)
         desktop_card.layout().addWidget(QLabel(
             "提醒确认低价、部分/全部失败、需要人工处理及邮件发送失败。普通成功轮次不打扰；应用内最近动态始终保留。",
             objectName="muted", wordWrap=True,
@@ -77,11 +83,14 @@ class NotificationsPage(QWidget):
         desktop_card.layout().addWidget(desktop_save, alignment=Qt.AlignmentFlag.AlignRight)
         layout.addWidget(desktop_card)
 
-        mail_card = _card("我的邮件通知")
+        mail_card = _card("✉  我的邮件通知")
         self.mail_toggle = QCheckBox("启用邮件汇总")
         mail_card.layout().addWidget(self.mail_toggle)
-        form = QFormLayout()
-        form.setSpacing(10)
+        security_note = QFrame(objectName="infoCard")
+        security_layout = QVBoxLayout(security_note)
+        security_layout.addWidget(QLabel("授权码保存在 Windows 系统凭据中", objectName="sectionTitle"))
+        security_layout.addWidget(QLabel("航价守望不会把授权码写入 YAML、日志、诊断文件或安装包。", objectName="muted", wordWrap=True))
+        mail_card.layout().addWidget(security_note)
         self.host = QLineEdit()
         self.host.setPlaceholderText("例如 smtp.example.com")
         self.port = QSpinBox()
@@ -99,13 +108,16 @@ class NotificationsPage(QWidget):
         self.recipients = QLineEdit()
         self.recipients.setPlaceholderText("多个收件邮箱用逗号分隔")
         self.attach = QCheckBox("邮件附带 Excel 报告")
-        for label, widget in (
+        form = QGridLayout()
+        form.setHorizontalSpacing(18)
+        form.setVerticalSpacing(15)
+        for index, (label, widget) in enumerate((
             ("SMTP 服务器", self.host), ("端口", self.port),
-            ("安全方式", self.security), ("邮箱账号", self.username),
-            ("SMTP 授权码", self.password), ("发件人", self.sender),
+            ("安全方式", self.security), ("SMTP 授权码", self.password),
+            ("邮箱账号", self.username), ("发件人", self.sender),
             ("收件人", self.recipients), ("报告附件", self.attach),
-        ):
-            form.addRow(label, widget)
+        )):
+            form.addLayout(_field(label, widget), index // 2, index % 2)
         mail_card.layout().addLayout(form)
         mail_card.layout().addWidget(QLabel(
             "授权码只存入 Windows 系统凭据，不写入配置、日志或诊断文件。请使用邮箱服务商提供的 SMTP 授权码，不要填网页登录密码。",
@@ -254,6 +266,15 @@ class NotificationsPage(QWidget):
 def _card(title: str) -> QFrame:
     frame = QFrame(objectName="card")
     layout = QVBoxLayout(frame)
-    layout.setContentsMargins(22, 18, 22, 18)
+    layout.setContentsMargins(24, 21, 24, 21)
+    layout.setSpacing(14)
     layout.addWidget(QLabel(title, objectName="sectionTitle"))
     return frame
+
+
+def _field(label: str, widget: QWidget) -> QVBoxLayout:
+    layout = QVBoxLayout()
+    layout.setSpacing(5)
+    layout.addWidget(QLabel(label))
+    layout.addWidget(widget)
+    return layout

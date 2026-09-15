@@ -43,11 +43,11 @@ class FlightResultsPage(QWidget):
         self._candidate_by_id: dict[str, dict[str, object]] = {}
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(30, 24, 30, 24)
-        layout.setSpacing(13)
+        layout.setContentsMargins(30, 27, 30, 27)
+        layout.setSpacing(16)
 
         title_row = QHBoxLayout()
-        back = QPushButton("← 返回我的航程")
+        back = QPushButton("← 返回我的航程", objectName="linkButton")
         back.clicked.connect(on_back)
         title_row.addWidget(back)
         heading = QVBoxLayout()
@@ -66,10 +66,10 @@ class FlightResultsPage(QWidget):
         layout.addWidget(self.notice)
 
         metrics = QHBoxLayout()
-        self.minimum_card = _metric_card("最低含税总价", "—", "CNY")
-        self.eligible_card = _metric_card("符合条件", "0", "本轮候选")
-        self.direct_card = _metric_card("行程构成", "—", "直达 / 中转")
-        self.time_card = _metric_card("查询时间", "—", "最近完整结果")
+        self.minimum_card = _metric_card("最低含税总价", "—", "CNY", "green")
+        self.eligible_card = _metric_card("符合条件", "0", "本轮候选", "blue")
+        self.direct_card = _metric_card("行程构成", "—", "直达 / 中转", "violet")
+        self.time_card = _metric_card("查询时间", "—", "最近完整结果", "amber")
         for card in (self.minimum_card, self.eligible_card, self.direct_card, self.time_card):
             metrics.addWidget(card, 1)
         layout.addLayout(metrics)
@@ -374,9 +374,11 @@ def _period_matches(hour: int, period: str) -> bool:
     }.get(period, True)
 
 
-def _metric_card(title: str, value: str, detail: str) -> QFrame:
+def _metric_card(title: str, value: str, detail: str, accent: str) -> QFrame:
     card = QFrame(objectName="metricCard")
+    card.setProperty("accent", accent)
     layout = QVBoxLayout(card)
+    layout.setContentsMargins(17, 14, 17, 14)
     layout.addWidget(QLabel(title, objectName="muted"))
     layout.addWidget(QLabel(value, objectName="metricValue"))
     layout.addWidget(QLabel(detail, objectName="detail"))

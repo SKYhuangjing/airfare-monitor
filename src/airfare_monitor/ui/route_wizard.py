@@ -26,7 +26,8 @@ class RouteWizard(QDialog):
         self.controller = controller
         self.route = route
         self.setWindowTitle("编辑航程" if route else "添加航程")
-        self.setMinimumSize(800, 620)
+        self.setMinimumSize(940, 690)
+        self.resize(1040, 760)
         self.stack = QStackedWidget()
         self.step_label = QLabel()
         self.back_button = QPushButton("上一步")
@@ -46,7 +47,18 @@ class RouteWizard(QDialog):
         buttons.addWidget(self.save_paused_button)
         buttons.addWidget(self.next_button)
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("航程设置", objectName="pageTitle"))
+        layout.setContentsMargins(27, 23, 27, 22)
+        layout.setSpacing(17)
+        layout.addWidget(QLabel("编辑航程" if route else "添加航程", objectName="pageTitle"))
+        self.step_labels = [QLabel() for _ in range(3)]
+        step_bar = QHBoxLayout()
+        step_bar.addStretch()
+        for label in self.step_labels:
+            step_bar.addWidget(label)
+            step_bar.addSpacing(13)
+        step_bar.addStretch()
+        layout.addLayout(step_bar)
+        self.step_label.setObjectName("muted")
         layout.addWidget(self.step_label)
         layout.addWidget(self.stack, 1)
         layout.addLayout(buttons)
@@ -117,7 +129,16 @@ class RouteWizard(QDialog):
     def _route_page(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        body = QHBoxLayout()
+        body.setSpacing(15)
+        fields_card = QFrame(objectName="card")
+        fields_layout = QVBoxLayout(fields_card)
+        fields_layout.setContentsMargins(20, 19, 20, 19)
+        fields_layout.addWidget(QLabel("航线与日期", objectName="sectionTitle"))
+        fields_layout.addWidget(QLabel("从内置机场目录选择具体机场，来源会自动匹配。", objectName="muted"))
         form = QFormLayout()
+        form.setSpacing(12)
         form.addRow("从哪里出发", self.origin_picker)
         swap = QPushButton("交换起终点")
         swap.clicked.connect(self._swap)
@@ -138,14 +159,41 @@ class RouteWizard(QDialog):
         self.return_window_widget = _layout_widget(return_window)
         form.addRow(self.return_date_label, self.return_date)
         form.addRow(self.return_window_label, self.return_window_widget)
-        layout.addLayout(form)
-        layout.addStretch()
+        fields_layout.addLayout(form)
+        fields_layout.addStretch()
+        body.addWidget(fields_card, 3)
+        preview = QFrame(objectName="wizardPreview")
+        preview_layout = QVBoxLayout(preview)
+        preview_layout.setContentsMargins(18, 19, 18, 19)
+        preview_layout.setSpacing(14)
+        preview_layout.addWidget(QLabel("航程预览", objectName="sectionTitle"))
+        self.preview_route = QLabel("选择起点与终点", objectName="routeCode", wordWrap=True)
+        preview_layout.addWidget(self.preview_route)
+        self.preview_places = QLabel("起运机场  →  目的机场", objectName="muted", wordWrap=True)
+        preview_layout.addWidget(self.preview_places)
+        self.preview_date = QLabel("待选出发日期", wordWrap=True)
+        preview_layout.addWidget(self.preview_date)
+        self.preview_source = QLabel("自动匹配查询来源", objectName="sourcePill", wordWrap=True)
+        preview_layout.addWidget(self.preview_source)
+        preview_layout.addStretch()
+        preview_layout.addWidget(QLabel("地点以真实机场 IATA 代码保存，不会展开为“全部机场”城市集合。", objectName="fieldHint", wordWrap=True))
+        body.addWidget(preview, 2)
+        layout.addLayout(body, 1)
+        self.departure_date.dateChanged.connect(self._update_preview)
+        self.trip_type.currentIndexChanged.connect(self._update_preview)
         return page
 
     def _preferences_page(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
+        card = QFrame(objectName="card")
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(25, 21, 25, 21)
+        card_layout.setSpacing(13)
+        card_layout.addWidget(QLabel("价格与班次", objectName="sectionTitle"))
+        card_layout.addWidget(QLabel("选择你关心的含税价位与出行偏好，保存前仍会检查现有规则。", objectName="muted"))
         form = QFormLayout()
+        form.setSpacing(12)
         form.addRow("筛选", self.direct_only)
         self.layover_label = QLabel("最长总中转等待")
         form.addRow(self.layover_label, self.max_layover)
@@ -158,11 +206,11 @@ class RouteWizard(QDialog):
         form.addRow("成人", self.adult_count)
         form.addRow("儿童", self.child_count)
         form.addRow("舱位", self.cabin_class)
-        layout.addLayout(form)
+        card_layout.addLayout(form)
         note = QLabel("价格比较、历史和提醒均使用解析后的 CNY 含税总价。")
         note.setObjectName("muted")
-        layout.addWidget(note)
-        layout.addStretch()
+        card_layout.addWidget(note)
+        layout.addWidget(card, 1)
         return page
 
     def _confirm_page(self) -> QWidget:
@@ -172,6 +220,8 @@ class RouteWizard(QDialog):
         self.summary.setTextFormat(Qt.TextFormat.RichText)
         card = QFrame(objectName="card")
         card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(25, 22, 25, 22)
+        card_layout.addWidget(QLabel("确认航程设置", objectName="sectionTitle"))
         card_layout.addWidget(self.summary)
         layout.addWidget(card)
         layout.addStretch()
@@ -238,6 +288,27 @@ class RouteWizard(QDialog):
         self.return_window_label.setVisible(roundtrip)
         self.return_window_widget.setVisible(roundtrip)
         self._update_layover()
+        self._update_preview()
+
+    def _update_preview(self) -> None:
+        if not hasattr(self, "preview_route"):
+            return
+        origin, destination = self.origin_picker.selected, self.destination_picker.selected
+        self.preview_route.setText(
+            f"{origin.airport_iata if origin else '—'}  →  {destination.airport_iata if destination else '—'}"
+        )
+        self.preview_places.setText(
+            f"{origin.city_name_zh if origin else '出发地'}  →  {destination.city_name_zh if destination else '目的地'}"
+        )
+        self.preview_date.setText(f"出发：{self.departure_date.date().toString('yyyy-MM-dd')}  ·  {'往返' if self.trip_type.currentIndex() else '单程'}")
+        if origin and destination:
+            try:
+                domestic = resolve_market(_draft_leg(origin, destination)) == "domestic"
+            except ValueError:
+                domestic = False
+            self.preview_source.setText("国内 · 同程" if domestic else "国际/跨境 · 去哪儿")
+        else:
+            self.preview_source.setText("选择机场后自动匹配来源")
 
     def _update_layover(self) -> None:
         show = not self.direct_only.isChecked() and self.direct_only.isEnabled()
@@ -280,6 +351,11 @@ class RouteWizard(QDialog):
     def _update_step(self) -> None:
         index = self.stack.currentIndex()
         self.step_label.setText(f"第 {index + 1} 步，共 3 步 · {'航程信息' if index == 0 else '偏好设置' if index == 1 else '确认保存'}")
+        for position, label in enumerate(self.step_labels):
+            label.setText(f"{position + 1}  ·  {('航程信息', '价格与班次', '确认保存')[position]}")
+            label.setObjectName("stepActive" if position == index else "stepDone" if position < index else "stepPending")
+            label.style().unpolish(label)
+            label.style().polish(label)
         self.back_button.setVisible(index > 0)
         self.save_paused_button.setVisible(index == 2)
         if index == 2:

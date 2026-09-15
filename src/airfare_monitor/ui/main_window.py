@@ -68,8 +68,8 @@ class MainWindow(QMainWindow):
         self.latest_report_path: Path | None = None
         self._latest_prices: dict[str, Decimal] = {}
         self.setWindowTitle("航价守望")
-        self.setMinimumSize(1050, 700)
-        self.resize(1250, 800)
+        self.setMinimumSize(1100, 720)
+        self.resize(1370, 860)
         self.on_run_now = on_run_now
         self.on_pause = on_pause
         self.on_resume = on_resume
@@ -138,9 +138,10 @@ class MainWindow(QMainWindow):
 
     def _make_sidebar(self) -> QWidget:
         sidebar = QFrame(objectName="sidebar")
-        sidebar.setFixedWidth(238)
+        sidebar.setFixedWidth(246)
         layout = QVBoxLayout(sidebar)
-        layout.setContentsMargins(12, 18, 12, 16)
+        layout.setContentsMargins(13, 25, 13, 20)
+        layout.setSpacing(4)
         brand_row = QHBoxLayout()
         brand_row.setSpacing(10)
         brand_icon = QLabel()
@@ -149,19 +150,21 @@ class MainWindow(QMainWindow):
         brand_copy = QVBoxLayout()
         brand_copy.setSpacing(0)
         brand_copy.addWidget(QLabel("航价守望", objectName="brand"))
-        brand_copy.addWidget(QLabel("看见更好的出行价格", objectName="tagline"))
+        brand_copy.addWidget(QLabel("让更好的旅程发生", objectName="tagline"))
         brand_row.addLayout(brand_copy, 1)
         layout.addLayout(brand_row)
-        layout.addSpacing(18)
+        layout.addSpacing(35)
         self.nav_buttons: list[QPushButton] = []
-        for index, text in enumerate(("概览", "我的航程", "历史价格", "通知设置", "系统状态")):
-            button = QPushButton(text, objectName="navButton", checkable=True)
+        for index, (icon, text) in enumerate((("⌂", "概览"), ("✈", "我的航程"), ("▥", "历史价格"), ("◉", "通知设置"), ("⚙", "系统状态"))):
+            button = QPushButton(f"{icon}     {text}", objectName="navButton", checkable=True)
+            button.setMinimumHeight(48)
             button.clicked.connect(lambda checked=False, i=index: self._switch_page(i))
             layout.addWidget(button)
             self.nav_buttons.append(button)
         self.nav_buttons[0].setChecked(True)
         layout.addStretch()
-        layout.addWidget(QLabel("个人工具 · 最多监控 10 条", objectName="sidebarNote", alignment=Qt.AlignmentFlag.AlignCenter))
+        layout.addWidget(QLabel("关注价格，也关注更大的世界。", objectName="sidebarNote", alignment=Qt.AlignmentFlag.AlignCenter))
+        layout.addWidget(QLabel("个人工具  ·  同时最多 10 条", objectName="sidebarNote", alignment=Qt.AlignmentFlag.AlignCenter))
         layout.addWidget(QLabel(f"v{__version__}", objectName="sidebarVersion", alignment=Qt.AlignmentFlag.AlignCenter))
         return sidebar
 
@@ -368,15 +371,15 @@ class RoutesPage(QWidget):
         self._runtime_status: dict[str, str] = {}
         self.cards: list[QFrame] = []
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(30, 26, 30, 26)
-        layout.setSpacing(14)
+        layout.setContentsMargins(30, 28, 30, 28)
+        layout.setSpacing(19)
         header = QHBoxLayout()
         heading = QVBoxLayout()
         heading.addWidget(QLabel("我的航程", objectName="pageTitle"))
-        heading.addWidget(QLabel("管理需要持续关注的航程；复制的航程默认暂停。", objectName="muted"))
+        heading.addWidget(QLabel("把想去的地方交给航价守望；复制的航程默认暂停。", objectName="muted"))
         header.addLayout(heading)
         header.addStretch()
-        add = QPushButton("添加航程", objectName="primary")
+        add = QPushButton("＋  添加航程", objectName="primary")
         add.clicked.connect(self._new)
         header.addWidget(add)
         layout.addLayout(header)
@@ -433,11 +436,11 @@ class RoutesPage(QWidget):
 
     def _route_card(self, route: LegConfig) -> QFrame:
         card = QFrame(objectName="routeCard")
-        card.setMinimumHeight(300)
+        card.setMinimumHeight(325)
         card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(20, 17, 20, 15)
-        layout.setSpacing(11)
+        layout.setContentsMargins(20, 17, 20, 16)
+        layout.setSpacing(13)
 
         top = QHBoxLayout()
         state = QLabel("运行中" if route.enabled else "已暂停")
@@ -485,7 +488,7 @@ class RoutesPage(QWidget):
 
         latest = self._runtime_status.get(route.id, "等待首次查询" if route.enabled else "监控已暂停")
         latest_row = QHBoxLayout()
-        latest_row.addWidget(QLabel("最近状态", objectName="muted"))
+        latest_row.addWidget(QLabel("最近状态  ·", objectName="muted"))
         latest_value = QLabel(latest, objectName="routeLatest")
         latest_row.addWidget(latest_value)
         latest_row.addStretch()
@@ -583,18 +586,19 @@ class SystemStatusPage(QWidget):
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         host = QWidget()
         layout = QVBoxLayout(host)
-        layout.setContentsMargins(34, 30, 34, 30)
+        layout.setContentsMargins(30, 28, 30, 28)
+        layout.setSpacing(15)
         scroll.setWidget(host)
         outer.addWidget(scroll)
         title_row = QHBoxLayout()
-        title_row.addWidget(QLabel("系统状态与运行设置", objectName="pageTitle"))
+        title_row.addWidget(QLabel("系统状态", objectName="pageTitle"))
         title_row.addStretch()
         title_row.addWidget(QLabel(f"v{__version__}", objectName="muted"))
         self.save_button = QPushButton("保存设置", objectName="primary")
         self.save_button.clicked.connect(self._save_settings)
         title_row.addWidget(self.save_button)
         layout.addLayout(title_row)
-        layout.addWidget(QLabel("浏览器、查询间隔和通知偏好可随时调整。", objectName="muted"))
+        layout.addWidget(QLabel("查看监控健康、浏览器设置与最近运行记录；运行偏好可随时调整。", objectName="muted"))
         health_row = QHBoxLayout()
         self.service_health = _health_card("监控服务", "等待启动")
         self.storage_health = _health_card(
@@ -633,18 +637,37 @@ class SystemStatusPage(QWidget):
         layout.addWidget(profile)
 
         self.attention_card = QFrame(objectName="warningCard")
-        attention_layout = QHBoxLayout(self.attention_card)
+        attention_layout = QVBoxLayout(self.attention_card)
+        attention_layout.setContentsMargins(23, 20, 23, 20)
+        attention_layout.setSpacing(15)
+        attention_layout.addWidget(QLabel("需要你完成一次页面确认", objectName="sectionTitle"))
         self.attention_text = QLabel(wordWrap=True)
-        attention_layout.addWidget(self.attention_text, 1)
+        attention_layout.addWidget(self.attention_text)
+        steps = QHBoxLayout()
+        for number, heading, detail in (
+            ("1", "打开验证页面", "在隔离浏览器中打开受影响航程的页面"),
+            ("2", "人工完成确认", "按照网站提示，在浏览器中自行完成操作"),
+            ("3", "返回并重新查询", "确认完成后，手动重试这条航程"),
+        ):
+            step = QFrame(objectName="card")
+            step_layout = QVBoxLayout(step)
+            step_layout.addWidget(QLabel(f"{number}  {heading}", objectName="sectionTitle"))
+            step_layout.addWidget(QLabel(detail, objectName="muted", wordWrap=True))
+            steps.addWidget(step, 1)
+        attention_layout.addLayout(steps)
+        attention_layout.addWidget(QLabel("航价守望不会代替你处理验证，也不会自动登录或保存网站账号。", objectName="muted", wordWrap=True))
+        attention_actions = QHBoxLayout()
+        attention_actions.addStretch()
         open_page = QPushButton("打开验证页面")
         open_page.clicked.connect(self._open_attention)
         retry = QPushButton("我已完成，重新查询", objectName="primary")
         retry.clicked.connect(self._retry_attention)
         later = QPushButton("稍后处理")
         later.clicked.connect(self.attention_card.hide)
-        attention_layout.addWidget(later)
-        attention_layout.addWidget(open_page)
-        attention_layout.addWidget(retry)
+        attention_actions.addWidget(later)
+        attention_actions.addWidget(open_page)
+        attention_actions.addWidget(retry)
+        attention_layout.addLayout(attention_actions)
         self.attention_card.hide()
         layout.addWidget(self.attention_card)
 
@@ -665,17 +688,21 @@ class SystemStatusPage(QWidget):
         layout.addWidget(self.routes_label)
         self.runtime_label = QLabel("运行状态：等待启动", objectName="muted")
         layout.addWidget(self.runtime_label)
-        layout.addWidget(QLabel("最近运行记录", objectName="sectionTitle"))
+        events_card = QFrame(objectName="card")
+        events_layout = QVBoxLayout(events_card)
+        events_layout.setContentsMargins(20, 16, 20, 16)
+        events_layout.addWidget(QLabel("最近运行记录", objectName="sectionTitle"))
         self.events_table = QTableWidget(0, 3)
         self.events_table.setHorizontalHeaderLabels(["时间", "级别", "动态"])
         self.events_table.horizontalHeader().setStretchLastSection(True)
         self.events_table.verticalHeader().setVisible(False)
         self.events_table.setMinimumHeight(150)
         self.events_table.setMaximumHeight(205)
-        layout.addWidget(self.events_table)
+        events_layout.addWidget(self.events_table)
         export = QPushButton("导出脱敏诊断信息")
         export.clicked.connect(self._export_diagnostics)
-        layout.addWidget(export, alignment=Qt.AlignmentFlag.AlignRight)
+        events_layout.addWidget(export, alignment=Qt.AlignmentFlag.AlignRight)
+        layout.addWidget(events_card)
         layout.addStretch()
         self.refresh_events()
 
@@ -799,7 +826,12 @@ def _add_detail(layout: QGridLayout, row: int, column: int, title: str, value: s
 def _health_card(title: str, value: str) -> QFrame:
     card = QFrame(objectName="healthCard")
     layout = QVBoxLayout(card)
-    layout.addWidget(QLabel(title, objectName="muted"))
+    layout.setContentsMargins(17, 14, 17, 14)
+    row = QHBoxLayout()
+    row.addWidget(QLabel({"监控服务": "◉", "数据存储": "▥", "航班查询": "✈"}.get(title, "●"), objectName="metricIcon"))
+    row.addWidget(QLabel(title, objectName="muted"))
+    row.addStretch()
+    layout.addLayout(row)
     layout.addWidget(QLabel(value, objectName="healthValue"))
     return card
 
