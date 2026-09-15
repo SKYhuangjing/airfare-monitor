@@ -48,3 +48,12 @@ desktop:
   autostart: false
   onboarding_completed: false
   close_to_tray_confirmed: false
+desktop_mail:
+  enabled: false
+  smtp_host: ""
+  smtp_port: 465
+  security: ssl
+  username: ""
+  sender: ""
+  recipients: []
+  attach_excel: true

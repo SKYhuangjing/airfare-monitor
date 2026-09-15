@@ -15,11 +15,13 @@ from ..ui.app_icon import application_icon
 from ..ui.main_window import MainWindow
 from ..ui.onboarding import OnboardingDialog
 from .airport_catalog import AirportCatalog
+from .credential_store import CredentialStore
 from .controller import DesktopController
 from .event_bridge import CoordinatorEventBridge
 from .event_journal import AppEventJournal
 from .events import CoordinatorStateChanged
 from .monitor_coordinator import MonitorCoordinator
+from .notification_policy import alert_for_event
 from .preferences import PreferencesManager
 from .route_repository import RouteRepository
 from .settings_repository import SettingsRepository
@@ -50,6 +52,8 @@ def validate_ui_runtime(paths: AppPaths) -> str:
         outputs_dir=paths.outputs_dir,
     )
     window.close()
+    # Read-only check catches missing dynamic keyring backends in frozen builds.
+    CredentialStore._backend()
     return QGuiApplication.platformName()
 
 
@@ -105,6 +109,14 @@ def run_desktop(paths: AppPaths, *, start_hidden: bool = False) -> int:
             return False
         return coordinator.retry_leg(leg_id)
 
+    def open_verification_if_ready(leg_id: str) -> bool:
+        accepted = coordinator.open_verification(leg_id)
+        if not accepted:
+            QMessageBox.information(
+                window, "暂时无法打开", "请等待当前查询结束，或先完成已打开的人工确认页面。"
+            )
+        return accepted
+
     window = MainWindow(
         controller,
         catalog,
@@ -114,6 +126,7 @@ def run_desktop(paths: AppPaths, *, start_hidden: bool = False) -> int:
         on_pause=coordinator.pause,
         on_resume=coordinator.resume,
         on_retry_leg=retry_if_ready,
+        on_open_verification=open_verification_if_ready,
         history_store=history_store,
         outputs_dir=paths.outputs_dir,
     )
@@ -149,8 +162,21 @@ def run_desktop(paths: AppPaths, *, start_hidden: bool = False) -> int:
     coordinator.subscribe(bridge.publish)
     instance.set_activation_handler(window.activate)
     tray = _create_tray(app, window, coordinator)
+    alert_target = [0]
+
+    def notify_desktop(event: object) -> None:
+        alert = alert_for_event(event)
+        if alert is None:
+            return
+        alert_target[0] = alert.target_page
+        if preferences.load().desktop_notifications and tray.isVisible():
+            tray.showMessage(alert.title, alert.message, QSystemTrayIcon.MessageIcon.Information, 8000)
+
+    bridge.event_received.connect(notify_desktop, Qt.ConnectionType.QueuedConnection)
+    tray.messageClicked.connect(lambda: (window.activate(), window._switch_page(alert_target[0])))
     window.runtime_status_changed.connect(lambda text: tray.setToolTip(f"航价守望 · {text}"))
     app.aboutToQuit.connect(coordinator.shutdown)
+    app.aboutToQuit.connect(window.notifications.finish_pending_test)
     app.aboutToQuit.connect(instance.close)
     selected_browser = preferences.selected_browser(desktop_settings)
     if not start_hidden or selected_browser is None:

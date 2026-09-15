@@ -11,6 +11,8 @@ from .events import (
     FatalError,
     LegFinished,
     ManualAttentionRequested,
+    MailDeliveryFailed,
+    VerificationBrowserOpened,
 )
 
 
@@ -36,6 +38,15 @@ class AppEventJournal:
             leg_id=leg_id,
             occurred_at=occurred_at,
         )
+        if isinstance(event, CycleFinished) and event.report.threshold_confirmed_leg_ids:
+            self.store.record_app_event(
+                event_type="low_price_confirmed",
+                severity="notice",
+                message=(
+                    f"本轮 {len(event.report.threshold_confirmed_leg_ids)} 条航程命中心理价位"
+                ),
+                occurred_at=event.report.finished_at,
+            )
 
     def record_settings_changed(self) -> None:
         self.store.record_app_event(
@@ -98,4 +109,8 @@ def _event_payload(
     if isinstance(event, FatalError):
         # Never persist raw exception text; it can include URLs or browser details.
         return "fatal_error", "error", "监控运行异常，请打开系统状态检查", None, None
+    if isinstance(event, MailDeliveryFailed):
+        return "mail_failed", "warning", "价格和报告已保存，但邮件发送失败；请检查通知设置", None, None
+    if isinstance(event, VerificationBrowserOpened):
+        return "verification_opened", "notice", "已打开独立可见浏览器，等待人工完成页面确认", event.leg_id, None
     return None

@@ -5,6 +5,7 @@ from __future__ import annotations
 import queue
 import random
 import threading
+from dataclasses import replace
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import Protocol
@@ -14,6 +15,14 @@ from ..config import AppSettings, load_routes, load_settings
 from ..models import LegConfig, LegResult, RunReport
 from ..scheduler import AlreadyRunningError, ProcessLock
 from ..service import MonitorEventSink, MonitorService
+from ..collector import (
+    QunarBrowserSession, build_search_url, build_tongcheng_search_url,
+    build_roundtrip_search_url,
+)
+from ..market import resolve_market
+from ..mail import send_report_with_credentials
+from .credential_store import CredentialStore, CredentialStoreError
+from .mail_profile import MailProfileRepository
 from .events import (
     CoordinatorSnapshot,
     CoordinatorStateChanged,
@@ -23,6 +32,8 @@ from .events import (
     LegFinished,
     LegStarted,
     ManualAttentionRequested,
+    MailDeliveryFailed,
+    VerificationBrowserOpened,
     MonitorCommand,
     MonitorCommandType,
     NextRunScheduled,
@@ -87,6 +98,7 @@ class MonitorCoordinator:
         self._running = False
         self._run_request_pending = False
         self._next_run_at: datetime | None = None
+        self._verification_session: QunarBrowserSession | None = None
 
     def subscribe(self, listener: Callable[[object], None]) -> None:
         self._listeners.append(listener)
@@ -111,7 +123,7 @@ class MonitorCoordinator:
 
     def run_now(self) -> bool:
         with self._lock:
-            if self._running or self._run_request_pending:
+            if self._running or self._run_request_pending or self._verification_session is not None:
                 accepted = False
                 message = "已有查询正在运行或等待执行，本次请求已合并"
             elif self._pause_requested.is_set():
@@ -142,6 +154,16 @@ class MonitorCoordinator:
         else:
             self._emit(CoordinatorStateChanged(self.snapshot().state, "当前无法重试，请等待本轮结束并继续监控"))
         return accepted
+
+    def open_verification(self, leg_id: str) -> bool:
+        identifier = leg_id.strip()
+        if not identifier:
+            return False
+        with self._lock:
+            if self._running or self._run_request_pending or self._verification_session is not None:
+                return False
+        self._commands.put(MonitorCommand(MonitorCommandType.OPEN_VERIFICATION, identifier))
+        return True
 
     def pause(self) -> bool:
         if self._pause_requested.is_set():
@@ -194,9 +216,15 @@ class MonitorCoordinator:
 
             if command.kind == MonitorCommandType.SHUTDOWN:
                 break
+            if command.kind == MonitorCommandType.OPEN_VERIFICATION:
+                self._open_verification_browser(command.leg_id)
+                continue
             if command.kind == MonitorCommandType.PAUSE:
                 continue
             if command.kind == MonitorCommandType.RESUME:
+                if self._verification_session is not None:
+                    self._set_state("ATTENTION", "人工确认页面仍打开；完成后请重试受影响航程")
+                    continue
                 if self._next_schedule() is None or self._schedule_is_due():
                     self._execute_cycle(None)
                 else:
@@ -212,7 +240,55 @@ class MonitorCoordinator:
                 if self._pause_requested.is_set():
                     self._set_state("PAUSED", "监控已暂停")
                     continue
+                if self._verification_session is not None:
+                    self._close_verification_browser()
                 self._execute_cycle(command.leg_id)
+        self._close_verification_browser()
+
+    def _open_verification_browser(self, leg_id: str | None) -> None:
+        if not leg_id or self.snapshot().running or self._verification_session is not None:
+            return
+        session: QunarBrowserSession | None = None
+        try:
+            legs = load_routes(self.paths.routes_path, allow_empty=True)
+            leg = next((item for item in legs if item.id == leg_id), None)
+            if leg is None:
+                raise ValueError("受影响航程已不存在")
+            settings = load_settings(self.paths.settings_path, project_root=self.paths.user_root)
+            session = QunarBrowserSession(replace(settings.browser, headless=False))
+            session.start()
+            assert session.tab is not None
+            if resolve_market(leg) == "domestic":
+                url = build_tongcheng_search_url(settings.browser.tongcheng_search_url_template, leg)
+            elif leg.is_round_trip:
+                url = build_roundtrip_search_url(settings.browser.roundtrip_search_url_template, leg)
+            else:
+                url = build_search_url(settings.browser.search_url_template, leg)
+            try:
+                session.tab.get(url, timeout=settings.browser.page_load_timeout_seconds)
+            except Exception:
+                # A challenge page can interrupt navigation. Keep the isolated
+                # browser visible so the user can complete the page manually.
+                pass
+            self._verification_session = session
+            self._emit(VerificationBrowserOpened(leg_id))
+            self._set_state("ATTENTION", "已打开独立的可见浏览器；请人工完成页面提示")
+        except Exception as exc:
+            if session is not None:
+                try:
+                    session.close()
+                except Exception:
+                    pass
+            self._emit(FatalError(type(exc).__name__, "无法打开人工确认页面，请检查浏览器后重试"))
+
+    def _close_verification_browser(self) -> None:
+        session = self._verification_session
+        self._verification_session = None
+        if session is not None:
+            try:
+                session.close()
+            except Exception:
+                pass
 
     def _execute_cycle(self, leg_id: str | None) -> None:
         service: _Service | None = None
@@ -235,6 +311,19 @@ class MonitorCoordinator:
                 return
 
             settings = load_settings(self.paths.settings_path, project_root=self.paths.user_root)
+            mail_profile = MailProfileRepository(
+                self.paths.settings_path, user_root=self.paths.user_root
+            ).load()
+            desktop_mail = None
+            if mail_profile.enabled:
+                try:
+                    secret = CredentialStore().get_secret(mail_profile.username)
+                    desktop_mail = (
+                        mail_profile.mail_settings(settings.mail),
+                        mail_profile.credentials(secret or ""),
+                    )
+                except (CredentialStoreError, ValueError):
+                    self._emit(MailDeliveryFailed("CredentialUnavailable"))
             self._set_state("RUNNING", f"正在串行查询 {len(enabled)} 条航程")
             service = self._service_factory(
                 enabled,
@@ -242,7 +331,14 @@ class MonitorCoordinator:
                 _CoordinatorSink(self),
                 self._interruptible_delay,
             )
-            report, workbook = service.run_once(send_email=settings.mail.enabled)
+            if desktop_mail is not None and isinstance(service, MonitorService):
+                mail_settings, credentials = desktop_mail
+                service.mail_delivery = lambda report, workbook: send_report_with_credentials(
+                    report, mail_settings, credentials, workbook
+                )
+            report, workbook = service.run_once(
+                send_email=settings.mail.enabled or desktop_mail is not None
+            )
             self._emit(CycleFinished(report, str(workbook), len(enabled)))
 
             if any(result.status.value == "manual_attention" for result in report.legs):
@@ -282,7 +378,7 @@ class MonitorCoordinator:
             raise _ShutdownRequested
 
     def _seconds_until_wakeup(self) -> float | None:
-        if self._pause_requested.is_set():
+        if self._pause_requested.is_set() or self._verification_session is not None:
             return None
         with self._lock:
             due_at = self._next_run_at
@@ -349,6 +445,9 @@ class _CoordinatorSink(MonitorEventSink):
 
     def on_cycle_finished(self, report: RunReport, workbook: object) -> None:
         return
+
+    def on_mail_failed(self, category: str) -> None:
+        self.coordinator._emit(MailDeliveryFailed(category))
 
     def should_continue(self) -> bool:
         return not self.coordinator._pause_requested.is_set() and not self.coordinator._shutdown.is_set()

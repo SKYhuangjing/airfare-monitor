@@ -12,6 +12,7 @@ datas = [
 ]
 datas += collect_data_files("airportsdata")
 hiddenimports = collect_submodules("DrissionPage")
+hiddenimports += collect_submodules("keyring.backends")
 
 a = Analysis(
     [str(ROOT / "packaging" / "desktop_entry.py")],

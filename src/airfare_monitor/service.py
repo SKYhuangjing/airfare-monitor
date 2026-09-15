@@ -52,6 +52,7 @@ class MonitorService:
         now: Callable[[], datetime] = datetime.now,
         event_sink: MonitorEventSink | None = None,
         should_continue: Callable[[], bool] = lambda: True,
+        mail_delivery: Callable[[RunReport, object], None] | None = None,
     ):
         validate_enabled_leg_limit(legs)
         self.legs = [leg for leg in legs if leg.enabled]
@@ -62,6 +63,7 @@ class MonitorService:
         self.now = now
         self.event_sink = event_sink or NullMonitorEventSink()
         self.should_continue = should_continue
+        self.mail_delivery = mail_delivery
         self.consecutive_failures = 0
 
     def close(self) -> None:
@@ -217,7 +219,18 @@ class MonitorService:
             now=report.finished_at,
         )
         if send_email:
-            send_report(report, self.settings.mail, workbook)
+            try:
+                if self.mail_delivery is not None:
+                    self.mail_delivery(report, workbook)
+                else:
+                    send_report(report, self.settings.mail, workbook)
+            except Exception as exc:
+                if self.mail_delivery is None and isinstance(self.event_sink, NullMonitorEventSink):
+                    raise  # Preserve the CLI's explicit mail failure signal.
+                logger.warning("价格和报告已保存，但邮件发送失败：%s", type(exc).__name__)
+                callback = getattr(self.event_sink, "on_mail_failed", None)
+                if callback is not None:
+                    self._notify(lambda: callback(type(exc).__name__))
         self._notify(lambda: self.event_sink.on_cycle_finished(report, workbook))
         return report, workbook
 

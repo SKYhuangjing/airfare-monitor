@@ -15,6 +15,7 @@ class MonitorCommandType(StrEnum):
     PAUSE = "pause"
     RESUME = "resume"
     RETRY_LEG = "retry_leg"
+    OPEN_VERIFICATION = "open_verification"
     APPLY_SETTINGS = "apply_settings"
     SHUTDOWN = "shutdown"
 
@@ -85,3 +86,13 @@ class ManualAttentionRequested:
 class FatalError:
     category: str
     user_message: str
+
+
+@dataclass(frozen=True, slots=True)
+class MailDeliveryFailed:
+    category: str
+
+
+@dataclass(frozen=True, slots=True)
+class VerificationBrowserOpened:
+    leg_id: str

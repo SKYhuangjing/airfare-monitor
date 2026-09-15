@@ -440,6 +440,24 @@ def send_report(report: RunReport, settings: MailSettings, attachment: Path | No
     SmtpSender().send(message, settings, credentials)
 
 
+def send_report_with_credentials(
+    report: RunReport,
+    settings: MailSettings,
+    credentials: SmtpCredentials,
+    attachment: Path | None = None,
+) -> None:
+    """Desktop delivery path; it never reads secrets from environment or YAML."""
+
+    message = build_message(
+        report,
+        settings,
+        sender=credentials.sender,
+        recipients=list(credentials.recipients),
+        attachment=attachment,
+    )
+    SmtpSender().send(message, settings, credentials)
+
+
 def send_test_message(settings: MailSettings, credentials: SmtpCredentials) -> None:
     """Explicit GUI action: send a short test only after the user requests it."""
     if not credentials.sender or not credentials.recipients:

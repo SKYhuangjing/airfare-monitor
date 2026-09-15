@@ -6,10 +6,11 @@ from decimal import Decimal
 from pathlib import Path
 
 from PySide6.QtCore import QUrl, Qt, Signal
+import json
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QFrame, QGridLayout, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QProgressBar,
-    QPushButton, QScrollArea, QSizePolicy, QStackedWidget, QTableWidget, QTableWidgetItem,
+    QFileDialog, QPushButton, QScrollArea, QSizePolicy, QStackedWidget, QTableWidget, QTableWidgetItem,
     QVBoxLayout, QWidget,
 )
 
@@ -19,9 +20,12 @@ from ..desktop_app.browser_detector import BrowserCandidate
 from ..desktop_app.controller import DesktopController
 from ..desktop_app.events import (
     CoordinatorStateChanged, CycleFinished, CycleStarted, FatalError, LegFinished, LegStarted,
-    ManualAttentionRequested, NextRunScheduled,
+    ManualAttentionRequested, NextRunScheduled, MailDeliveryFailed,
+    VerificationBrowserOpened,
 )
 from ..desktop_app.preferences import PreferencesManager
+from ..desktop_app.mail_profile import MailProfileRepository
+from ..desktop_app.diagnostics import build_diagnostics
 from ..desktop_app.view_data import load_dashboard_data
 from ..models import LegConfig
 from ..storage import SQLiteStore
@@ -29,6 +33,7 @@ from .dashboard_page import DashboardPage
 from .flight_results_page import FlightResultsPage
 from .history_page import HistoryPage
 from .preferences import RuntimePreferencesForm, preference_card
+from .notifications_page import NotificationsPage
 from .route_wizard import RouteWizard
 from .app_icon import application_icon
 from .. import __version__
@@ -49,6 +54,7 @@ class MainWindow(QMainWindow):
         on_pause: Callable[[], bool | None] | None = None,
         on_resume: Callable[[], bool | None] | None = None,
         on_retry_leg: Callable[[str], bool | None] | None = None,
+        on_open_verification: Callable[[str], bool | None] | None = None,
         history_store: SQLiteStore | None = None,
         outputs_dir: Path | None = None,
     ):
@@ -68,6 +74,7 @@ class MainWindow(QMainWindow):
         self.on_pause = on_pause
         self.on_resume = on_resume
         self.on_retry_leg = on_retry_leg
+        self.on_open_verification = on_open_verification
         self._paused = False
         self._build()
         self.controller.on_routes_changed(self.refresh_routes)
@@ -94,13 +101,23 @@ class MainWindow(QMainWindow):
             open_latest_report=self.open_latest_report,
             outputs_dir=self.outputs_dir,
         )
-        self.notifications = PlaceholderPage("通知设置", "桌面通知与 SMTP 设置将在下一阶段接入 Windows 凭据安全存储。")
+        self.notifications = NotificationsPage(
+            self.preferences,
+            MailProfileRepository(
+                self.preferences.repository.path,
+                user_root=self.preferences.repository.user_root,
+            ),
+        )
+        self.notifications.settings_saved.connect(
+            lambda: self.runtime_settings_saved.emit(None)
+        )
         self.system = SystemStatusPage(
             self.browsers,
             self.preferences,
             history_store=self.history_store,
             outputs_dir=self.outputs_dir,
             retry_leg=self._retry_leg,
+            open_verification=self._open_verification,
         )
         self.flight_results = FlightResultsPage(
             self.history_store,
@@ -194,6 +211,10 @@ class MainWindow(QMainWindow):
             self.dashboard.set_running(True)
             self.system.clear_attention()
 
+    def _open_verification(self, leg_id: str) -> None:
+        if self.on_open_verification is not None:
+            self.on_open_verification(leg_id)
+
     def open_latest_report(self) -> None:
         report = self.latest_report_path
         if report is None and self.outputs_dir and self.outputs_dir.is_dir():
@@ -225,6 +246,7 @@ class MainWindow(QMainWindow):
         latest_run = self.history_store.latest_run()
         self.dashboard.set_data(load_dashboard_data(self.history_store, routes))
         self.history.reload()
+        self.system.refresh_events()
         if latest_run:
             finished = str(latest_run["finished_at"]).replace("T", " ")
             self.dashboard.set_runtime("最近完成", f"最近一轮：{finished} · {latest_run['status']}")
@@ -287,6 +309,13 @@ class MainWindow(QMainWindow):
             self.routes_page.set_leg_status(event.leg_id, "需要人工处理")
             self.system.set_attention(event.leg_id, event.message)
             self._set_runtime("需要人工处理", event.message)
+            self.system.refresh_events()
+        elif isinstance(event, VerificationBrowserOpened):
+            self.system.verification_opened(event.leg_id)
+            self._switch_page(4)
+        elif isinstance(event, MailDeliveryFailed):
+            self.notifications.status.setText("价格和报告已保存，但邮件发送失败；请检查设置并主动测试通路。")
+            self.refresh_from_history()
         elif isinstance(event, FatalError):
             self.dashboard.set_running(False)
             self._set_runtime("运行异常", f"{event.category}：{event.user_message}")
@@ -537,15 +566,26 @@ class SystemStatusPage(QWidget):
         history_store: SQLiteStore | None = None,
         outputs_dir: Path | None = None,
         retry_leg: Callable[[str], None] | None = None,
+        open_verification: Callable[[str], None] | None = None,
     ):
         super().__init__()
         self.preferences = preferences
         self.history_store = history_store
         self.outputs_dir = outputs_dir
         self.retry_leg = retry_leg
+        self.open_verification = open_verification
         self._attention_leg_id: str | None = None
-        layout = QVBoxLayout(self)
+        self._enabled_route_count = 0
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        host = QWidget()
+        layout = QVBoxLayout(host)
         layout.setContentsMargins(34, 30, 34, 30)
+        scroll.setWidget(host)
+        outer.addWidget(scroll)
         title_row = QHBoxLayout()
         title_row.addWidget(QLabel("系统状态与运行设置", objectName="pageTitle"))
         title_row.addStretch()
@@ -596,11 +636,14 @@ class SystemStatusPage(QWidget):
         attention_layout = QHBoxLayout(self.attention_card)
         self.attention_text = QLabel(wordWrap=True)
         attention_layout.addWidget(self.attention_text, 1)
-        retry = QPushButton("重新查询此航程", objectName="primary")
+        open_page = QPushButton("打开验证页面")
+        open_page.clicked.connect(self._open_attention)
+        retry = QPushButton("我已完成，重新查询", objectName="primary")
         retry.clicked.connect(self._retry_attention)
         later = QPushButton("稍后处理")
         later.clicked.connect(self.attention_card.hide)
         attention_layout.addWidget(later)
+        attention_layout.addWidget(open_page)
         attention_layout.addWidget(retry)
         self.attention_card.hide()
         layout.addWidget(self.attention_card)
@@ -622,7 +665,53 @@ class SystemStatusPage(QWidget):
         layout.addWidget(self.routes_label)
         self.runtime_label = QLabel("运行状态：等待启动", objectName="muted")
         layout.addWidget(self.runtime_label)
+        layout.addWidget(QLabel("最近运行记录", objectName="sectionTitle"))
+        self.events_table = QTableWidget(0, 3)
+        self.events_table.setHorizontalHeaderLabels(["时间", "级别", "动态"])
+        self.events_table.horizontalHeader().setStretchLastSection(True)
+        self.events_table.verticalHeader().setVisible(False)
+        self.events_table.setMinimumHeight(150)
+        self.events_table.setMaximumHeight(205)
+        layout.addWidget(self.events_table)
+        export = QPushButton("导出脱敏诊断信息")
+        export.clicked.connect(self._export_diagnostics)
+        layout.addWidget(export, alignment=Qt.AlignmentFlag.AlignRight)
         layout.addStretch()
+        self.refresh_events()
+
+    def _export_diagnostics(self) -> None:
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "保存脱敏诊断信息", "AirfareMonitor-diagnostics.json", "JSON 文件 (*.json)"
+        )
+        if not filename:
+            return
+        try:
+            payload = build_diagnostics(
+                self.preferences.load(), self.history_store,
+                enabled_routes=self._enabled_route_count,
+            )
+            Path(filename).write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+        except (OSError, ValueError):
+            QMessageBox.warning(self, "无法导出", "诊断信息未保存，请选择可写入的位置。")
+            return
+        QMessageBox.information(self, "已导出", "诊断信息已保存；不含授权码、邮箱地址、原始网页响应或浏览器数据。")
+
+    def refresh_events(self) -> None:
+        if self.history_store is None:
+            self.events_table.setRowCount(0)
+            return
+        events = self.history_store.recent_app_events(limit=12)
+        self.events_table.setRowCount(len(events))
+        for index, event in enumerate(events):
+            stamp = str(event.get("occurred_at") or "").replace("T", " ")[:16]
+            severity = {"info": "信息", "notice": "提醒", "warning": "注意", "error": "异常"}.get(
+                str(event.get("severity")), "信息"
+            )
+            for column, text in enumerate((stamp, severity, str(event.get("message") or ""))):
+                self.events_table.setItem(index, column, QTableWidgetItem(text))
+        self.events_table.resizeColumnsToContents()
 
     def _redetect(self) -> None:
         browsers = self.preferences.refresh_browsers()
@@ -651,7 +740,8 @@ class SystemStatusPage(QWidget):
         self.browser_warning.show()
 
     def set_route_count(self, routes: list[LegConfig]) -> None:
-        self.routes_label.setText(f"启用航程：{sum(route.enabled for route in routes)} / {MAX_ENABLED_LEGS}")
+        self._enabled_route_count = sum(route.enabled for route in routes)
+        self.routes_label.setText(f"启用航程：{self._enabled_route_count} / {MAX_ENABLED_LEGS}")
 
     def set_runtime(self, title: str, detail: str) -> None:
         self.runtime_label.setText(f"运行状态：{title}\n{detail}")
@@ -665,9 +755,21 @@ class SystemStatusPage(QWidget):
         self._attention_leg_id = leg_id
         self.attention_text.setText(
             f"航程 {leg_id} 需要人工处理。{message}\n"
-            "如当前为隐藏模式，请先开启“显示浏览器运行过程”，保存后再重新查询。"
+            "1. 打开航价守望自己的可见浏览器；2. 人工完成网页提示；3. 点击已完成重新查询。"
         )
         self.attention_card.show()
+
+    def verification_opened(self, leg_id: str) -> None:
+        self._attention_leg_id = leg_id
+        self.attention_text.setText(
+            "已打开使用同一隔离 Profile 的可见浏览器。请只在网页中人工完成提示，"
+            "然后点击“我已完成，重新查询”。下次监控仍使用原来的显示/隐藏设置。"
+        )
+        self.attention_card.show()
+
+    def _open_attention(self) -> None:
+        if self._attention_leg_id and self.open_verification:
+            self.open_verification(self._attention_leg_id)
 
     def clear_attention(self) -> None:
         self._attention_leg_id = None
