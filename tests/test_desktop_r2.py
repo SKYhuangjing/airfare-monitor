@@ -9,7 +9,7 @@ from tempfile import TemporaryDirectory
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QHeaderView, QPushButton
 
 from airfare_monitor.app_paths import AppPaths
 from airfare_monitor.desktop_app.airport_catalog import AirportCatalog
@@ -22,6 +22,7 @@ from airfare_monitor.models import EtdWindow, LegConfig
 from airfare_monitor.storage import SQLiteStore
 from airfare_monitor.ui.app_icon import application_icon
 from airfare_monitor.ui.history_page import HistoryPage, price_segments
+from airfare_monitor.ui.main_window import RoutesPage
 from airfare_monitor.ui.route_wizard import RouteWizard
 
 
@@ -55,6 +56,25 @@ class DesktopR2Tests(unittest.TestCase):
         pixmap = icon.pixmap(64, 64)
         self.assertFalse(pixmap.isNull())
         self.assertGreater(pixmap.toImage().pixelColor(32, 32).lightness(), 200)
+
+    def test_route_actions_have_visible_labels_and_a_stretching_column(self):
+        with TemporaryDirectory() as temp:
+            paths = _paths(temp)
+            paths.initialize()
+            controller = DesktopController(RouteRepository(paths.routes_path))
+            catalog = AirportCatalog.load(paths.resource_root / "airports.zh.json")
+            page = RoutesPage(controller, catalog)
+            page.refresh([_route("route-1")])
+            self.assertEqual(page.table.columnCount(), 6)
+            self.assertEqual(
+                page.table.horizontalHeader().sectionResizeMode(5),
+                QHeaderView.ResizeMode.Stretch,
+            )
+            action_cell = page.table.cellWidget(0, 5)
+            buttons = action_cell.findChildren(QPushButton)
+            self.assertEqual([button.text() for button in buttons], ["编辑", "暂停", "复制", "删除"])
+            self.assertTrue(all(button.minimumWidth() >= 62 for button in buttons))
+            page.close()
 
     def test_dashboard_data_uses_persisted_cny_totals_and_redacted_events(self):
         route = _route("route-1")

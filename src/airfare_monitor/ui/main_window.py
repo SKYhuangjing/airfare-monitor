@@ -8,7 +8,7 @@ from pathlib import Path
 from PySide6.QtCore import QUrl, Qt, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
-    QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPushButton, QStackedWidget,
+    QFrame, QHeaderView, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPushButton, QStackedWidget,
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
@@ -314,9 +314,13 @@ class RoutesPage(QWidget):
         row.addWidget(add)
         layout.addLayout(row)
         layout.addWidget(QLabel("最多同时启用 10 条航程；暂停的航程会保留配置与历史。", objectName="muted"))
-        self.table = QTableWidget(0, 7)
-        self.table.setHorizontalHeaderLabels(["航程", "日期", "来源", "偏好", "状态", "操作", ""])
-        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table = QTableWidget(0, 6)
+        self.table.setHorizontalHeaderLabels(["航程", "日期", "来源", "偏好", "状态", "操作"])
+        header = self.table.horizontalHeader()
+        for column in range(5):
+            header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
+        header.setMinimumSectionSize(72)
         self.table.verticalHeader().setVisible(False)
         layout.addWidget(self.table, 1)
 
@@ -342,7 +346,7 @@ class RoutesPage(QWidget):
                 ("复制", lambda checked=False, item=route: self._copy(item)),
                 ("删除", lambda checked=False, item=route: self._delete(item)),
             ))
-        self.table.resizeColumnsToContents()
+        self.table.resizeRowsToContents()
 
     def set_leg_status(self, leg_id: str, status: str) -> None:
         self._runtime_status[leg_id] = status
@@ -545,9 +549,10 @@ def _actions(*actions: tuple[str, Callable[[], None]]) -> QWidget:
     widget = QWidget()
     layout = QHBoxLayout(widget)
     layout.setContentsMargins(4, 2, 4, 2)
+    layout.setSpacing(6)
     for label, callback in actions:
-        button = QPushButton(label)
-        button.setMaximumWidth(52)
+        button = QPushButton(label, objectName="tableAction")
+        button.setMinimumSize(62, 30)
         button.clicked.connect(callback)
         layout.addWidget(button)
     layout.addStretch()

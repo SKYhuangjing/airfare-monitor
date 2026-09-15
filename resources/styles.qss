@@ -9,6 +9,7 @@ QPushButton { border: 1px solid #cdd9e9; border-radius: 7px; background: #ffffff
 QPushButton:hover { background: #f2f7ff; }
 QPushButton#primary { background: #176be8; color: white; border: 0; font-weight: 700; }
 QPushButton#primary:hover { background: #0f59c7; }
+QPushButton#tableAction { padding: 5px 9px; min-width: 42px; }
 QFrame#card { background: white; border: 1px solid #e0e8f3; border-radius: 12px; }
 QFrame#metricCard { background: white; border: 1px solid #dce7f4; border-radius: 12px; min-height: 92px; }
 QFrame#healthCard { background: #f7fbff; border: 1px solid #d8e6f6; border-radius: 10px; min-height: 62px; }
