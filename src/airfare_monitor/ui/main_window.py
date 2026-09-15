@@ -6,7 +6,6 @@ from decimal import Decimal
 from pathlib import Path
 
 from PySide6.QtCore import QUrl, Qt, Signal
-import json
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QFrame, QGridLayout, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QProgressBar,
@@ -25,7 +24,7 @@ from ..desktop_app.events import (
 )
 from ..desktop_app.preferences import PreferencesManager
 from ..desktop_app.mail_profile import MailProfileRepository
-from ..desktop_app.diagnostics import build_diagnostics
+from ..desktop_app.diagnostics import export_diagnostic_zip
 from ..desktop_app.view_data import load_dashboard_data
 from ..models import LegConfig
 from ..storage import SQLiteStore
@@ -699,7 +698,7 @@ class SystemStatusPage(QWidget):
         self.events_table.setMinimumHeight(150)
         self.events_table.setMaximumHeight(205)
         events_layout.addWidget(self.events_table)
-        export = QPushButton("导出脱敏诊断信息")
+        export = QPushButton("导出脱敏诊断包")
         export.clicked.connect(self._export_diagnostics)
         events_layout.addWidget(export, alignment=Qt.AlignmentFlag.AlignRight)
         layout.addWidget(events_card)
@@ -708,22 +707,24 @@ class SystemStatusPage(QWidget):
 
     def _export_diagnostics(self) -> None:
         filename, _ = QFileDialog.getSaveFileName(
-            self, "保存脱敏诊断信息", "AirfareMonitor-diagnostics.json", "JSON 文件 (*.json)"
+            self, "保存脱敏诊断包", "AirfareMonitor-diagnostics.zip", "ZIP 文件 (*.zip)"
         )
         if not filename:
             return
         try:
-            payload = build_diagnostics(
-                self.preferences.load(), self.history_store,
+            settings = self.preferences.load()
+            browser = self.preferences.selected_browser(settings)
+            logs_dir = self.history_store.path.parent.parent / "logs" if self.history_store is not None else Path(".")
+            export_diagnostic_zip(
+                Path(filename), settings, self.history_store,
                 enabled_routes=self._enabled_route_count,
-            )
-            Path(filename).write_text(
-                json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+                logs_dir=logs_dir, catalog_version=self.catalog.version,
+                browser_version=browser.version if browser is not None else None,
             )
         except (OSError, ValueError):
             QMessageBox.warning(self, "无法导出", "诊断信息未保存，请选择可写入的位置。")
             return
-        QMessageBox.information(self, "已导出", "诊断信息已保存；不含授权码、邮箱地址、原始网页响应或浏览器数据。")
+        QMessageBox.information(self, "已导出", "脱敏诊断包已保存；不含授权码、邮箱地址、原始网页响应或浏览器数据。")
 
     def refresh_events(self) -> None:
         if self.history_store is None:

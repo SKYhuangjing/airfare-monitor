@@ -38,5 +38,5 @@ def _is_environment_system_dll(entry):
 a.binaries = [entry for entry in a.binaries if not _is_environment_system_dll(entry)]
 
 pyz = PYZ(a.pure)
-exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="AirfareMonitor", debug=False, bootloader_ignore_signals=False, strip=False, upx=False, console=False)
+exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="AirfareMonitor", debug=False, bootloader_ignore_signals=False, strip=False, upx=False, console=False, icon=str(ROOT / "resources" / "app.ico"))
 coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=False, name="AirfareMonitor")

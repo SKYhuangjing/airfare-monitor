@@ -9,6 +9,7 @@ build/
 dist/
 build-*/
 dist-*/
+release/
 
 # Secrets and local configuration
 .env

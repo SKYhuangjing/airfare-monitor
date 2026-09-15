@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import traceback
 from datetime import datetime
 from pathlib import Path
 
@@ -30,6 +29,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     paths = AppPaths.discover(user_root=args.user_root)
     try:
+        paths.initialize()
+        from .desktop_app.safe_logging import configure_desktop_logging
+
+        configure_desktop_logging(paths)
         if args.smoke_test:
             from .desktop_app.startup import initialize_desktop
 
@@ -49,7 +52,6 @@ def main(argv: list[str] | None = None) -> int:
         # Create the user-owned state before importing Qt and collection modules.
         # If a frozen dependency import fails, the exception is now recorded under
         # this deterministic directory instead of disappearing in a windowed EXE.
-        paths.initialize()
         from .desktop_app.application import run_desktop
 
         if args.ui_smoke_test:
@@ -70,10 +72,17 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:
         log_path = _write_startup_error(paths, exc)
         if args.smoke_test or args.ui_smoke_test:
+            try:
+                from .desktop_app.safe_logging import redact_text
+
+                safe_message = redact_text(str(exc))
+            except Exception:
+                safe_message = type(exc).__name__
+
             payload = {
                 "status": "error",
                 "error_type": type(exc).__name__,
-                "message": str(exc),
+                "message": safe_message,
                 "startup_log": str(log_path),
             }
             _write_smoke_report(paths, args.smoke_report, payload)
@@ -81,6 +90,13 @@ def main(argv: list[str] | None = None) -> int:
         else:
             _show_startup_error(log_path)
         return 1
+    finally:
+        try:
+            from .desktop_app.safe_logging import close_desktop_logging
+
+            close_desktop_logging()
+        except Exception:
+            pass
 
 
 def _write_smoke_report(paths: AppPaths, requested_path: str | None, payload: dict[str, object]) -> Path:
@@ -93,14 +109,18 @@ def _write_smoke_report(paths: AppPaths, requested_path: str | None, payload: di
 def _write_startup_error(paths: AppPaths, exc: Exception) -> Path:
     log_path = paths.logs_dir / "startup.log"
     try:
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        with log_path.open("a", encoding="utf-8") as handle:
-            handle.write(f"[{datetime.now().isoformat(timespec='seconds')}] {type(exc).__name__}: {exc}\n")
-            handle.write("".join(traceback.format_exception(exc)))
-            handle.write("\n")
-    except OSError:
+        from .desktop_app.safe_logging import write_startup_failure
+
+        return write_startup_failure(paths, exc)
+    except Exception:
+        # A failing logger must not write unfiltered exception details either.
+        try:
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            with log_path.open("a", encoding="utf-8") as handle:
+                handle.write(f"[{datetime.now().isoformat(timespec='seconds')}] {type(exc).__name__}\n")
+        except OSError:
+            pass
         return log_path
-    return log_path
 
 
 def _show_startup_error(log_path: Path) -> None:

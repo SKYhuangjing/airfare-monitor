@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import logging
 from pathlib import Path
 
 from PySide6.QtCore import QTimer, Qt
@@ -26,7 +27,11 @@ from .preferences import PreferencesManager
 from .route_repository import RouteRepository
 from .settings_repository import SettingsRepository
 from .single_instance import SingleInstance
+from .session_state import DesktopSessionState
 from .startup import initialize_desktop
+
+
+logger = logging.getLogger(__name__)
 
 
 def validate_ui_runtime(paths: AppPaths) -> str:
@@ -70,6 +75,8 @@ def run_desktop(paths: AppPaths, *, start_hidden: bool = False) -> int:
     instance = SingleInstance()
     if not instance.acquire():
         return 0
+    session_state = DesktopSessionState(paths.logs_dir)
+    previous_unclean = session_state.begin()
     preferences = PreferencesManager(SettingsRepository(paths.settings_path, user_root=paths.user_root))
     desktop_settings = preferences.load()
     browsers = preferences.refresh_browsers()
@@ -77,6 +84,7 @@ def run_desktop(paths: AppPaths, *, start_hidden: bool = False) -> int:
     if not desktop_settings.onboarding_completed:
         onboarding = OnboardingDialog(preferences)
         if onboarding.exec() != QDialog.DialogCode.Accepted:
+            session_state.finish()
             instance.close()
             return 0
         assert onboarding.saved_settings is not None
@@ -88,6 +96,13 @@ def run_desktop(paths: AppPaths, *, start_hidden: bool = False) -> int:
     history_store = SQLiteStore(paths.database_path)
     journal = AppEventJournal(history_store)
     journal.initialize()
+    if previous_unclean:
+        journal.store.record_app_event(
+            event_type="previous_unclean_exit",
+            severity="warning",
+            message="上次运行未正常结束；请检查浏览器与最近查询状态",
+        )
+        logger.warning("检测到上次桌面会话未正常结束")
 
     window: MainWindow
 
@@ -175,13 +190,36 @@ def run_desktop(paths: AppPaths, *, start_hidden: bool = False) -> int:
     bridge.event_received.connect(notify_desktop, Qt.ConnectionType.QueuedConnection)
     tray.messageClicked.connect(lambda: (window.activate(), window._switch_page(alert_target[0])))
     window.runtime_status_changed.connect(lambda text: tray.setToolTip(f"航价守望 · {text}"))
-    app.aboutToQuit.connect(coordinator.shutdown)
-    app.aboutToQuit.connect(window.notifications.finish_pending_test)
-    app.aboutToQuit.connect(instance.close)
+    def finish_desktop() -> None:
+        try:
+            monitor_stopped = coordinator.shutdown(timeout=20)
+            mail_stopped = window.notifications.finish_pending_test()
+            if monitor_stopped and mail_stopped:
+                session_state.finish()
+            else:
+                logger.error("桌面退出等待超时，保留异常会话标记以便下次启动提示")
+        finally:
+            instance.close()
+
+    app.aboutToQuit.connect(finish_desktop)
     selected_browser = preferences.selected_browser(desktop_settings)
     if not start_hidden or selected_browser is None:
         window.show()
     tray.show()
+    if previous_unclean:
+        if start_hidden:
+            tray.showMessage(
+                "上次运行未正常结束",
+                "请打开系统状态检查浏览器和最近查询记录。",
+                QSystemTrayIcon.MessageIcon.Warning,
+                8000,
+            )
+        else:
+            QTimer.singleShot(0, lambda: QMessageBox.warning(
+                window,
+                "上次运行未正常结束",
+                "航价守望检测到上次运行未正常退出。请在系统状态中检查浏览器与最近查询记录。",
+            ))
     coordinator.start(run_immediately=selected_browser is not None)
     if selected_browser is None:
         window.handle_monitor_event(

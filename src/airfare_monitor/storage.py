@@ -14,6 +14,9 @@ from typing import Any
 from .models import LegResult, PreferredPriceReference, RunReport
 
 
+SCHEMA_VERSION = 1
+
+
 SCHEMA = """
 PRAGMA foreign_keys = ON;
 
@@ -223,6 +226,9 @@ class SQLiteStore:
 
     def initialize(self) -> None:
         with closing(self.connect()) as connection:
+            current_version = int(connection.execute("PRAGMA user_version").fetchone()[0])
+            if current_version > SCHEMA_VERSION:
+                raise RuntimeError("价格数据库由更新版本创建；请使用较新的航价守望程序打开")
             connection.executescript(SCHEMA)
             columns = {row[1] for row in connection.execute("PRAGMA table_info(flight_snapshots)")}
             if "connection_airports_json" not in columns:
@@ -243,6 +249,7 @@ class SQLiteStore:
             for name in ("return_date", "return_etd_window_start", "return_etd_window_end"):
                 if name not in leg_columns:
                     connection.execute(f"ALTER TABLE leg_results ADD COLUMN {name} TEXT")
+            connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
             connection.commit()
 
     def previous_minimum(self, leg_id: str, *, before: datetime | None = None) -> Decimal | None:

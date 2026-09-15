@@ -256,11 +256,12 @@ class NotificationsPage(QWidget):
         self._worker = None
         self._thread = None
 
-    def finish_pending_test(self) -> None:
+    def finish_pending_test(self) -> bool:
         """Keep a mail worker alive until it exits during normal application quit."""
 
         if self._thread is not None:
-            self._thread.wait(35000)
+            return self._thread.wait(35000)
+        return True
 
 
 def _card(title: str) -> QFrame:
