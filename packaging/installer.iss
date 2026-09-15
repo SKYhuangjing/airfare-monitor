@@ -1,5 +1,5 @@
 #define MyAppName "航价守望"
-#define MyAppVersion "0.2.0"
+#define MyAppVersion "0.3.0"
 #define MyAppPublisher "AirfareMonitor"
 #define MyAppExeName "AirfareMonitor.exe"
 

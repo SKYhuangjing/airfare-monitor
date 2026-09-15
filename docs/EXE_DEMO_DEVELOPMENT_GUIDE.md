@@ -422,7 +422,8 @@ def validate_enabled_leg_limit(legs: Sequence[LegConfig]) -> None:
 | 起飞时间窗 | 全天 `00:00-23:59` |
 | 直达 | 是 |
 | 心理价位 | 空，表示只观察 |
-| 最低价候选数 | 10，不显示在普通表单 |
+| 报告最低价候选数 | 10，不显示在普通表单 |
+| 桌面候选详情 | 从同一完整响应保留价格前 200 条，不增加网站请求 |
 | 成人 | 1 |
 | 儿童 | 0 |
 | 舱位 | economy |
@@ -503,7 +504,17 @@ preferred_browser: auto | chrome | edge
 - 点击航程打开详情；
 - 删除只删除配置，不自动删除历史；清理历史必须单独确认。
 
-### 9.4 航程向导
+### 9.4 候选航班详情
+
+- 概览和航程卡片都提供“查看候选”入口；
+- 页面只通过 `SQLiteStore.latest_flight_candidates(leg_id)` 获取普通字典，不直接拼 SQL；
+- 采集器使用当前 `LegConfig` 的全部筛选规则进行一次解析，并将前 10 条写入 `LegResult.flights`、最多 200 条写入 `LegResult.candidate_flights`；
+- 邮件、Excel、低价阈值和既有价格引用继续只使用 `flights`，从而保持原有输出稳定；
+- 页面本地完成搜索、筛选、排序和最多 3 项对比，不触发浏览器操作；
+- 打开失败轮次对应航程时，回退到最近一次成功且 `completed_response = 1` 的结果并显示陈旧提示；
+- 只展示解析后的航班字段，不向 UI 暴露原始响应。
+
+### 9.5 航程向导
 
 使用一个 `QDialog/QWizard` 风格三步页面，但不要直接使用默认系统 Wizard 视觉。
 
@@ -533,7 +544,7 @@ preferred_browser: auto | chrome | edge
 
 所有页面使用同一个 `RouteDraft`，最后一步才转换为 `LegConfig` 并写入。
 
-### 9.5 历史页
+### 9.6 历史页
 
 - 航程选择；
 - 最近 24 小时/7 天；
@@ -545,7 +556,7 @@ preferred_browser: auto | chrome | edge
 
 P0 一次最多绘制 500 个点，更多数据先按时间桶采样，避免阻塞 UI。
 
-### 9.6 通知页
+### 9.7 通知页
 
 - 桌面通知独立开关；
 - SMTP 主机、端口、SSL/STARTTLS、用户名、授权码、发件人、收件人；
@@ -556,7 +567,7 @@ P0 一次最多绘制 500 个点，更多数据先按时间桶采样，避免阻
 - 发送测试邮件是用户显式操作；
 - 普通采集成功默认不弹窗，低价命中、部分失败和人工处理才通知。
 
-### 9.7 系统状态页
+### 9.8 系统状态页
 
 - 应用版本；
 - 浏览器类型、路径和版本；
@@ -842,6 +853,7 @@ class SmtpCredentials:
 ```text
 latest_run()
 latest_leg_results(enabled_leg_ids)
+latest_flight_candidates(leg_id)
 leg_price_series(leg_id, since, max_points)
 recent_runs(limit=20)
 attention_items()
@@ -881,6 +893,7 @@ details_json TEXT NULL
 - Excel 默认 30 天；
 - 日志默认 30 天或单目录上限；
 - 价格历史 P0 不自动删除；
+- 同轮扩展候选（排名 11～200）保留 7 天，每轮前 10 条不受此清理影响；
 - 清理只在一轮结束后执行；
 - 清理失败只记录警告，不影响本轮结果。
 

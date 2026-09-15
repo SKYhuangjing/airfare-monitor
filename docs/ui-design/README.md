@@ -19,6 +19,7 @@
 | `08-notification-settings.png` | 桌面通知、SMTP、凭据安全说明、显式测试邮件操作 |
 | `09-system-status.png` | 服务健康、隔离浏览器 Profile、显示模式、运行记录、脱敏诊断 |
 | `10-manual-verification.png` | 人工页面确认、打开验证页、完成后重试、其他航程继续运行 |
+| `11-flight-results-detail.md` | 最近完整查询的候选航班表、筛选排序、信息缺失和同轮对比规则 |
 
 ## 实施约束
 

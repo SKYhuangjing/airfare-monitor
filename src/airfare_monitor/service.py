@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from typing import Callable, Protocol
 
 from .collector import QunarBrowserSession
-from .config import AppSettings, validate_enabled_leg_limit
+from .config import CANDIDATE_DETAIL_RETENTION_DAYS, AppSettings, validate_enabled_leg_limit
 from .errors import CollectionError, ManualAttentionRequired
 from .excel_report import generate_workbook
 from .mail import send_report
@@ -212,6 +212,10 @@ class MonitorService:
         history = self.store.history(since=since)
         workbook = generate_workbook(report, history, self.settings.excel.output_directory)
         self.store.prune_raw_responses(self.settings.storage.keep_raw_response_days, now=report.finished_at)
+        self.store.prune_candidate_details(
+            CANDIDATE_DETAIL_RETENTION_DAYS,
+            now=report.finished_at,
+        )
         if send_email:
             send_report(report, self.settings.mail, workbook)
         self._notify(lambda: self.event_sink.on_cycle_finished(report, workbook))

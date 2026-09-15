@@ -32,6 +32,7 @@ class DashboardPage(QWidget):
         run_now: Callable[[], None],
         toggle_pause: Callable[[], None],
         open_routes: Callable[[], None],
+        open_results: Callable[[LegConfig], None],
     ):
         super().__init__()
         self._routes: list[LegConfig] = []
@@ -41,6 +42,7 @@ class DashboardPage(QWidget):
         self._next_run: datetime | None = None
         self._paused = False
         self._running = False
+        self._open_results = open_results
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(30, 26, 30, 26)
@@ -80,9 +82,9 @@ class DashboardPage(QWidget):
         all_routes.clicked.connect(open_routes)
         route_header.addWidget(all_routes)
         layout.addLayout(route_header)
-        self.route_table = QTableWidget(0, 7)
+        self.route_table = QTableWidget(0, 8)
         self.route_table.setHorizontalHeaderLabels(
-            ["航程", "日期与来源", "筛选", "最新含税价", "变化/心理价位", "状态", "更新时间"]
+            ["航程", "日期与来源", "筛选", "最新含税价", "变化/心理价位", "状态", "更新时间", "操作"]
         )
         self.route_table.horizontalHeader().setStretchLastSection(True)
         self.route_table.verticalHeader().setVisible(False)
@@ -187,6 +189,10 @@ class DashboardPage(QWidget):
                 if column == 3:
                     item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                 self.route_table.setItem(row, column, item)
+            action = QPushButton("查看候选", objectName="tableAction")
+            action.setMinimumWidth(76)
+            action.clicked.connect(lambda checked=False, item=route: self._open_results(item))
+            self.route_table.setCellWidget(row, 7, action)
         self.route_table.resizeColumnsToContents()
 
     def _render_events(self) -> None:

@@ -242,6 +242,9 @@ class LegResult:
     status: LegStatus
     captured_at: datetime
     flights: list[FlightSnapshot] = field(default_factory=list)
+    # Full de-duplicated candidates from the same completed response. Alerts,
+    # mail and Excel deliberately keep using ``flights`` (the Top-N shortlist).
+    candidate_flights: list[FlightSnapshot] = field(default_factory=list)
     preferred_matches: list[FlightSnapshot | None] = field(default_factory=list)
     preferred_price_references: list[PreferredPriceReference] = field(default_factory=list)
     flight_price_references: dict[str, PreferredPriceReference] = field(default_factory=dict)

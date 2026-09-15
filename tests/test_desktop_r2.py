@@ -18,9 +18,12 @@ from airfare_monitor.desktop_app.event_journal import AppEventJournal
 from airfare_monitor.desktop_app.events import FatalError
 from airfare_monitor.desktop_app.route_repository import RouteRepository
 from airfare_monitor.desktop_app.view_data import load_dashboard_data
-from airfare_monitor.models import EtdWindow, LegConfig
+from airfare_monitor.models import (
+    EtdWindow, FlightSnapshot, LegConfig, LegResult, LegStatus, RunReport, RunStatus,
+)
 from airfare_monitor.storage import SQLiteStore
 from airfare_monitor.ui.app_icon import application_icon
+from airfare_monitor.ui.flight_results_page import FlightResultsPage, filter_and_sort_candidates
 from airfare_monitor.ui.history_page import HistoryPage, price_segments
 from airfare_monitor.ui.main_window import RoutesPage
 from airfare_monitor.ui.route_wizard import RouteWizard
@@ -69,12 +72,100 @@ class DesktopR2Tests(unittest.TestCase):
             self.assertEqual(page.capacity_bar.value(), 1)
             self.assertEqual(len(page.cards), 1)
             buttons = page.cards[0].findChildren(QPushButton)
-            self.assertEqual({button.text() for button in buttons}, {"编辑", "暂停", "复制", "删除"})
+            self.assertEqual(
+                {button.text() for button in buttons},
+                {"编辑", "暂停", "复制", "删除", "查看候选"},
+            )
             labels = {label.text() for label in page.cards[0].findChildren(QLabel)}
             self.assertIn("PVG", labels)
             self.assertIn("KUL", labels)
             self.assertIn("国际/跨境 · 去哪儿", labels)
             page.close()
+
+    def test_candidate_filter_supports_price_time_connection_and_search(self):
+        rows = [
+            _candidate_row("MU100", "MU", "900", "2026-10-01T08:00:00", True, 300),
+            _candidate_row("CZ200", "CZ", "700", "2026-10-01T14:00:00", False, 480),
+            _candidate_row("MH300", "MH", "800", "2026-10-01T19:00:00", True, 360),
+        ]
+        filtered = filter_and_sort_candidates(
+            rows,
+            search="CZ",
+            connection="transfer",
+            period="afternoon",
+            below_threshold=Decimal("750"),
+            sort_by="price",
+        )
+        self.assertEqual([item["flight_codes"][0] for item in filtered], ["CZ200"])
+        self.assertEqual(
+            [item["flight_codes"][0] for item in filter_and_sort_candidates(rows, sort_by="price")],
+            ["CZ200", "MH300", "MU100"],
+        )
+
+    def test_flight_results_page_reads_all_locally_stored_candidates(self):
+        with TemporaryDirectory() as temp:
+            store = SQLiteStore(Path(temp) / "monitor.sqlite3")
+            store.initialize()
+            route = _route("route-1")
+            captured = datetime(2026, 9, 15, 10, 30)
+            cheapest = _flight("candidate-1", "MU100", Decimal("900"), captured)
+            alternative = _flight("candidate-2", "CZ200", Decimal("980"), captured)
+            result = LegResult(
+                route,
+                LegStatus.SUCCESS,
+                captured,
+                flights=[cheapest],
+                candidate_flights=[cheapest, alternative],
+                completed_response=True,
+                observed_count=5,
+                eligible_count=2,
+            )
+            store.save_report(
+                RunReport("run-1", captured, captured, RunStatus.SUCCESS, [result], set())
+            )
+            saved = store.latest_flight_candidates(route.id)
+            self.assertEqual(saved["stored_count"], 2)
+            self.assertEqual(saved["flights"][1]["flight_codes"], ["CZ200"])
+            page = FlightResultsPage(store, on_back=lambda: None)
+            page.show_route(route)
+            self.assertEqual(page.table.rowCount(), 2)
+            self.assertEqual(page.result_count.text(), "2 条")
+            page.close()
+
+    def test_expanded_candidates_expire_but_historical_top_ten_remain(self):
+        with TemporaryDirectory() as temp:
+            store = SQLiteStore(Path(temp) / "monitor.sqlite3")
+            store.initialize()
+            route = _route("route-1")
+            old_at = datetime(2026, 9, 1, 10, 30)
+            candidates = [
+                _flight(f"candidate-{index}", f"MU{index:03d}", Decimal(900 + index), old_at)
+                for index in range(12)
+            ]
+            result = LegResult(
+                route,
+                LegStatus.SUCCESS,
+                old_at,
+                flights=candidates[:10],
+                candidate_flights=candidates,
+                completed_response=True,
+                eligible_count=12,
+            )
+            store.save_report(
+                RunReport("run-old", old_at, old_at, RunStatus.SUCCESS, [result], set())
+            )
+
+            deleted = store.prune_candidate_details(7, now=datetime(2026, 9, 15, 10, 30))
+
+            self.assertEqual(deleted, 2)
+            connection = store.connect()
+            try:
+                count = connection.execute(
+                    "SELECT COUNT(*) FROM flight_snapshots WHERE run_id = 'run-old'"
+                ).fetchone()[0]
+            finally:
+                connection.close()
+            self.assertEqual(count, 10)
 
     def test_dashboard_data_uses_persisted_cny_totals_and_redacted_events(self):
         route = _route("route-1")
@@ -180,6 +271,56 @@ def _route(identifier: str) -> LegConfig:
         origin_name_zh="上海浦东",
         destination_name_zh="吉隆坡",
     )
+
+
+def _flight(
+    signature: str,
+    code: str,
+    total: Decimal,
+    captured: datetime,
+) -> FlightSnapshot:
+    return FlightSnapshot(
+        flight_signature=signature,
+        flight_codes=(code,),
+        carrier_codes=(code[:2],),
+        origin_airport_iata="PVG",
+        destination_airport_iata="KUL",
+        departure_date=date(2026, 10, 1),
+        etd_local=datetime(2026, 10, 1, 8),
+        eta_local=datetime(2026, 10, 1, 13, 30),
+        duration_minutes=330,
+        segment_count=1,
+        is_direct=True,
+        base_price_cny=total - Decimal("200"),
+        tax_cny=Decimal("200"),
+        total_price_cny=total,
+        currency_code="CNY",
+        remaining_seats="4",
+        free_baggage_piece=1,
+        free_baggage_weight="23kg",
+        source_domain="example.test",
+        captured_at=captured,
+    )
+
+
+def _candidate_row(
+    code: str,
+    carrier: str,
+    total: str,
+    departure: str,
+    direct: bool,
+    duration: int,
+) -> dict[str, object]:
+    return {
+        "flight_signature": code,
+        "flight_codes": [code],
+        "carrier_codes": [carrier],
+        "total_price_cny": total,
+        "etd_local": departure,
+        "eta_local": departure,
+        "is_direct": direct,
+        "duration_minutes": duration,
+    }
 
 
 def _paths(root: str) -> AppPaths:

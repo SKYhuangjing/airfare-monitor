@@ -185,6 +185,30 @@ def _return_itinerary_json(result: Any) -> str | None:
     )
 
 
+def _decode_flight_snapshot(row: sqlite3.Row) -> dict[str, Any]:
+    """Decode JSON columns into presentation-ready values without raw response data."""
+
+    value = dict(row)
+    value["flight_codes"] = _load_json(value.pop("flight_codes_json"), [])
+    value["carrier_codes"] = _load_json(value.pop("carrier_codes_json"), [])
+    value["connection_airports"] = _load_json(value.pop("connection_airports_json"), [])
+    value["return_itinerary"] = _load_json(value.pop("return_itinerary_json"), None)
+    value["seat_availability"] = _load_json(value.pop("seat_availability_json"), None)
+    value["outbound_seat_availability"] = _load_json(
+        value.pop("outbound_seat_availability_json"), None
+    )
+    return value
+
+
+def _load_json(value: object, default: Any) -> Any:
+    if not value:
+        return default
+    try:
+        return json.loads(str(value))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return default
+
+
 class SQLiteStore:
     def __init__(self, path: str | Path):
         self.path = Path(path)
@@ -343,7 +367,8 @@ class SQLiteStore:
                 result.error_message,
             ),
         )
-        for rank, flight in enumerate(result.flights, start=1):
+        stored_candidates = result.candidate_flights or result.flights
+        for rank, flight in enumerate(stored_candidates, start=1):
             connection.execute(
                 """INSERT INTO flight_snapshots (
                     run_id, leg_id, rank_number, flight_signature,
@@ -509,6 +534,29 @@ class SQLiteStore:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def latest_flight_candidates(self, leg_id: str) -> dict[str, Any] | None:
+        """Return the latest complete successful result and its stored candidates."""
+
+        with closing(self.connect()) as connection:
+            result = connection.execute(
+                """SELECT * FROM leg_results
+                   WHERE leg_id = ? AND status = 'success' AND completed_response = 1
+                   ORDER BY captured_at DESC, run_id DESC LIMIT 1""",
+                (leg_id,),
+            ).fetchone()
+            if result is None:
+                return None
+            flights = connection.execute(
+                """SELECT * FROM flight_snapshots
+                   WHERE run_id = ? AND leg_id = ?
+                   ORDER BY rank_number ASC""",
+                (result["run_id"], leg_id),
+            ).fetchall()
+        payload = dict(result)
+        payload["flights"] = [_decode_flight_snapshot(row) for row in flights]
+        payload["stored_count"] = len(flights)
+        return payload
+
     def prune_app_events(self, keep_days: int = 30, *, now: datetime | None = None) -> int:
         if keep_days < 0:
             raise ValueError("keep_days cannot be negative")
@@ -527,4 +575,18 @@ class SQLiteStore:
         with closing(self.connect()) as connection:
             with connection:
                 cursor = connection.execute("DELETE FROM raw_responses WHERE captured_at < ?", (_iso(cutoff),))
+                return cursor.rowcount
+
+    def prune_candidate_details(self, keep_days: int = 7, *, now: datetime | None = None) -> int:
+        """Expire expanded candidate rows while retaining the historical Top 10."""
+
+        if keep_days < 0:
+            raise ValueError("keep_days cannot be negative")
+        cutoff = (now or datetime.now()) - timedelta(days=keep_days)
+        with closing(self.connect()) as connection:
+            with connection:
+                cursor = connection.execute(
+                    "DELETE FROM flight_snapshots WHERE rank_number > 10 AND captured_at < ?",
+                    (_iso(cutoff),),
+                )
                 return cursor.rowcount

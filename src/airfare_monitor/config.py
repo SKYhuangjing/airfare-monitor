@@ -19,6 +19,8 @@ _IATA_RE = re.compile(r"^[A-Z]{3}$")
 _CABIN_CLASSES = {"economy", "premium_economy", "business", "first"}
 _MARKETS = {"auto", "domestic", "international"}
 MAX_ENABLED_LEGS = 10
+MAX_STORED_CANDIDATES = 200
+CANDIDATE_DETAIL_RETENTION_DAYS = 7
 
 
 def load_local_env(path: str | Path, *, override: bool = False) -> None:

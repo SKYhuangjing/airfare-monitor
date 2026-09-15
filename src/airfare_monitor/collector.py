@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import json
 import time
+from dataclasses import replace
 from datetime import datetime
 from typing import Any, Callable
 from urllib.parse import quote
 
-from .config import BrowserSettings
+from .config import BrowserSettings, MAX_STORED_CANDIDATES
 from .errors import CollectionError, IncompleteResponseError, ManualAttentionRequired
 from .market import resolve_market
 from .models import LegConfig, LegResult, LegStatus
@@ -226,14 +227,15 @@ class QunarBrowserSession:
                 break
             last_payload = payload
             if is_completed_payload(payload):
-                flights, preferred_matches, observed_count, eligible_count = parse_completed_payload(
-                    payload, leg, captured_at
+                ranked, preferred_matches, observed_count, eligible_count = parse_completed_payload(
+                    payload, _candidate_leg(leg), captured_at
                 )
                 return LegResult(
                     leg=leg,
                     status=LegStatus.SUCCESS,
                     captured_at=captured_at,
-                    flights=flights,
+                    flights=ranked[: leg.top_n],
+                    candidate_flights=ranked[:MAX_STORED_CANDIDATES],
                     preferred_matches=preferred_matches,
                     completed_response=True,
                     observed_count=observed_count,
@@ -263,14 +265,15 @@ class QunarBrowserSession:
                 break
             last_payload = payload
             if is_completed_payload(payload):
-                flights, preferred_matches, observed_count, eligible_count = parse_completed_payload(
-                    payload, leg, captured_at
+                ranked, preferred_matches, observed_count, eligible_count = parse_completed_payload(
+                    payload, _candidate_leg(leg), captured_at
                 )
                 return LegResult(
                     leg=leg,
                     status=LegStatus.SUCCESS,
                     captured_at=captured_at,
-                    flights=flights,
+                    flights=ranked[: leg.top_n],
+                    candidate_flights=ranked[:MAX_STORED_CANDIDATES],
                     preferred_matches=preferred_matches,
                     completed_response=True,
                     observed_count=observed_count,
@@ -302,14 +305,15 @@ class QunarBrowserSession:
             if isinstance(state, dict):
                 last_state = state
             if is_completed_tongcheng_page_state(state, leg):
-                flights, preferred_matches, observed_count, eligible_count = parse_tongcheng_page_state(
-                    state, leg, captured_at
+                ranked, preferred_matches, observed_count, eligible_count = parse_tongcheng_page_state(
+                    state, _candidate_leg(leg), captured_at
                 )
                 return LegResult(
                     leg=leg,
                     status=LegStatus.SUCCESS,
                     captured_at=captured_at,
-                    flights=flights,
+                    flights=ranked[: leg.top_n],
+                    candidate_flights=ranked[:MAX_STORED_CANDIDATES],
                     preferred_matches=preferred_matches,
                     completed_response=True,
                     observed_count=observed_count,
@@ -346,3 +350,9 @@ class QunarBrowserSession:
                 self.tab.listen.stop()
             except Exception:
                 pass
+
+
+def _candidate_leg(leg: LegConfig) -> LegConfig:
+    """Ask existing parsers for enough ranked rows without changing route rules."""
+
+    return replace(leg, top_n=max(leg.top_n, MAX_STORED_CANDIDATES))

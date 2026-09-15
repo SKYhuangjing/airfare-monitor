@@ -26,6 +26,7 @@ from ..desktop_app.view_data import load_dashboard_data
 from ..models import LegConfig
 from ..storage import SQLiteStore
 from .dashboard_page import DashboardPage
+from .flight_results_page import FlightResultsPage
 from .history_page import HistoryPage
 from .preferences import RuntimePreferencesForm, preference_card
 from .route_wizard import RouteWizard
@@ -85,8 +86,9 @@ class MainWindow(QMainWindow):
             self._run_now,
             self._toggle_pause,
             lambda: self._switch_page(1),
+            self._open_results,
         )
-        self.routes_page = RoutesPage(self.controller, self.catalog)
+        self.routes_page = RoutesPage(self.controller, self.catalog, open_results=self._open_results)
         self.history = HistoryPage(
             self.history_store,
             open_latest_report=self.open_latest_report,
@@ -100,8 +102,19 @@ class MainWindow(QMainWindow):
             outputs_dir=self.outputs_dir,
             retry_leg=self._retry_leg,
         )
+        self.flight_results = FlightResultsPage(
+            self.history_store,
+            on_back=lambda: self._switch_page(1),
+        )
         self.system.settings_saved.connect(self.runtime_settings_saved.emit)
-        for page in (self.dashboard, self.routes_page, self.history, self.notifications, self.system):
+        for page in (
+            self.dashboard,
+            self.routes_page,
+            self.history,
+            self.notifications,
+            self.system,
+            self.flight_results,
+        ):
             self.pages.addWidget(page)
         layout.addWidget(self.pages, 1)
         self.setCentralWidget(root)
@@ -143,6 +156,10 @@ class MainWindow(QMainWindow):
     def _open_new_route(self) -> None:
         wizard = RouteWizard(self.catalog, self.controller, parent=self)
         wizard.exec()
+
+    def _open_results(self, route: LegConfig) -> None:
+        self.flight_results.show_route(route)
+        self._switch_page(5)
 
     def begin_first_route(self) -> None:
         self._switch_page(1)
@@ -307,10 +324,17 @@ class MainWindow(QMainWindow):
 
 
 class RoutesPage(QWidget):
-    def __init__(self, controller: DesktopController, catalog: AirportCatalog):
+    def __init__(
+        self,
+        controller: DesktopController,
+        catalog: AirportCatalog,
+        *,
+        open_results: Callable[[LegConfig], None] | None = None,
+    ):
         super().__init__()
         self.controller = controller
         self.catalog = catalog
+        self.open_results = open_results
         self.routes: list[LegConfig] = []
         self._runtime_status: dict[str, str] = {}
         self.cards: list[QFrame] = []
@@ -449,6 +473,11 @@ class RoutesPage(QWidget):
         footer.addWidget(copy)
         footer.addStretch()
         footer.addWidget(delete)
+        results = QPushButton("查看候选", objectName="routeResultAction")
+        results.setEnabled(self.open_results is not None)
+        if self.open_results is not None:
+            results.clicked.connect(lambda checked=False, item=route: self.open_results(item))
+        footer.addWidget(results)
         layout.addLayout(footer)
         return card
 

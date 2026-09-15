@@ -5,11 +5,33 @@ from dataclasses import replace
 from datetime import date, time
 from decimal import Decimal
 
-from airfare_monitor.collector import build_roundtrip_search_url
+from airfare_monitor.collector import _candidate_leg, build_roundtrip_search_url
+from airfare_monitor.config import MAX_STORED_CANDIDATES
 from airfare_monitor.models import EtdWindow, LegConfig
 
 
 class CollectorUrlTests(unittest.TestCase):
+    def test_candidate_parse_limit_does_not_change_report_top_n(self):
+        configured = LegConfig(
+            "candidate-limit",
+            True,
+            "PVG",
+            "KUL",
+            date(2026, 9, 27),
+            EtdWindow(time(0), time(23, 59)),
+            True,
+            None,
+            10,
+            1,
+            0,
+            "economy",
+        )
+
+        expanded = _candidate_leg(configured)
+
+        self.assertEqual(configured.top_n, 10)
+        self.assertEqual(expanded.top_n, MAX_STORED_CANDIDATES)
+
     def test_round_trip_url_contains_both_dates_and_route(self):
         leg = LegConfig(
             "roundtrip-kul-mle",

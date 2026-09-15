@@ -13,12 +13,16 @@ QPushButton#primary { background: #176be8; color: white; border: 0; font-weight:
 QPushButton#primary:hover { background: #0f59c7; }
 QPushButton#tableAction { padding: 5px 9px; min-width: 42px; }
 QPushButton#routeAction, QPushButton#routeToggle { padding: 6px 13px; min-width: 48px; }
+QPushButton#routeResultAction { padding: 6px 13px; min-width: 64px; background: #176be8; color: white; border: 0; font-weight: 700; }
+QPushButton#routeResultAction:hover { background: #0f59c7; }
 QPushButton#dangerAction { padding: 6px 13px; color: #d13b45; border-color: #f0c8cc; }
 QPushButton#dangerAction:hover { background: #fff1f2; }
 QFrame#card { background: white; border: 1px solid #e0e8f3; border-radius: 12px; }
 QFrame#routeCard { background: white; border: 1px solid #dce6f2; border-radius: 12px; }
 QFrame#routeCard:hover { border-color: #9fc3f2; }
 QFrame#routeSummary { background: #f6f9fd; border: 0; border-radius: 8px; }
+QFrame#filterCard { background: white; border: 1px solid #dce6f2; border-radius: 10px; }
+QFrame#compareBar { background: #eef6ff; border: 1px solid #c9def8; border-radius: 10px; }
 QScrollArea#routeScroll { background: transparent; border: 0; }
 QScrollArea#routeScroll > QWidget > QWidget { background: transparent; }
 QProgressBar#capacityBar { border: 0; border-radius: 4px; background: #e4ebf4; height: 8px; }
