@@ -6,7 +6,8 @@ from decimal import Decimal, InvalidOperation
 
 from PySide6.QtCore import QDate, QTime, Qt
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDateEdit, QDialog, QFormLayout, QFrame, QHBoxLayout, QLabel,
+    QAbstractSpinBox, QCalendarWidget, QCheckBox, QComboBox, QDateEdit, QDialog,
+    QFormLayout, QFrame, QHBoxLayout, QLabel,
     QLineEdit, QMessageBox, QPushButton, QSpinBox, QStackedWidget, QTimeEdit, QVBoxLayout, QWidget,
 )
 
@@ -78,12 +79,17 @@ class RouteWizard(QDialog):
         self.destination_picker = AirportPicker(self.catalog)
         self.trip_type = QComboBox()
         self.trip_type.addItems(["单程", "往返"])
-        self.departure_date = QDateEdit(calendarPopup=True)
+        self.departure_date = QDateEdit()
         self.departure_date.setMinimumDate(QDate.currentDate())
         self.departure_date.setDate(QDate.currentDate().addDays(1))
-        self.return_date = QDateEdit(calendarPopup=True)
+        self.departure_date.setDisplayFormat("yyyy-MM-dd")
+        self.departure_date.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+        self.return_date = QDateEdit()
         self.return_date.setMinimumDate(QDate.currentDate().addDays(1))
         self.return_date.setDate(QDate.currentDate().addDays(8))
+        self.return_date.setDisplayFormat("yyyy-MM-dd")
+        self.return_date.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+        self.departure_date.dateChanged.connect(self._sync_return_date_minimum)
         self.start_time = QTimeEdit(QTime(0, 0))
         self.end_time = QTimeEdit(QTime(23, 59))
         self.departure_period = _period_combo()
@@ -145,7 +151,11 @@ class RouteWizard(QDialog):
         form.addRow("", swap)
         form.addRow("到哪里", self.destination_picker)
         form.addRow("航程类型", self.trip_type)
-        form.addRow("出发日期", self.departure_date)
+        self.domestic_roundtrip_hint = QLabel(objectName="domesticTripHint", wordWrap=True)
+        self.domestic_roundtrip_hint.hide()
+        form.addRow("", self.domestic_roundtrip_hint)
+        self.departure_date_field = _date_field(self.departure_date, "出发", self)
+        form.addRow("出发日期", self.departure_date_field)
         window = QHBoxLayout()
         window.addWidget(self.departure_period)
         window.addWidget(self.start_time)
@@ -157,7 +167,8 @@ class RouteWizard(QDialog):
         return_window = _time_layout(self.return_start_time, self.return_end_time)
         return_window.insertWidget(0, self.return_period)
         self.return_window_widget = _layout_widget(return_window)
-        form.addRow(self.return_date_label, self.return_date)
+        self.return_date_field = _date_field(self.return_date, "返程", self)
+        form.addRow(self.return_date_label, self.return_date_field)
         form.addRow(self.return_window_label, self.return_window_widget)
         fields_layout.addLayout(form)
         fields_layout.addStretch()
@@ -280,15 +291,29 @@ class RouteWizard(QDialog):
             self.trip_type.setCurrentIndex(0)
             self.direct_only.setChecked(True)
             self.direct_only.setEnabled(False)
+            return_route = f"{destination.airport_iata} → {origin.airport_iata}"
+            hint = (
+                "国内同程目前只支持单程直达，不支持去返程组合价。"
+                f"如需监控返程，请保存去程后再添加一条 {return_route} 的反向航程，并单独选择返程日期。"
+                "去程与返程各占用一条监控名额。"
+            )
+            self.domestic_roundtrip_hint.setText(hint)
+            self.domestic_roundtrip_hint.show()
+            self.trip_type.setToolTip(hint)
         else:
             self.direct_only.setEnabled(True)
+            self.domestic_roundtrip_hint.hide()
+            self.trip_type.setToolTip("")
         roundtrip = self.trip_type.currentIndex() == 1
         self.return_date_label.setVisible(roundtrip)
-        self.return_date.setVisible(roundtrip)
+        self.return_date_field.setVisible(roundtrip)
         self.return_window_label.setVisible(roundtrip)
         self.return_window_widget.setVisible(roundtrip)
         self._update_layover()
         self._update_preview()
+
+    def _sync_return_date_minimum(self) -> None:
+        self.return_date.setMinimumDate(self.departure_date.date().addDays(1))
 
     def _update_preview(self) -> None:
         if not hasattr(self, "preview_route"):
@@ -410,12 +435,18 @@ class RouteWizard(QDialog):
         market = resolve_market(_draft_leg(origin, destination))
         source = "同程（国内）" if market == "domestic" else "去哪儿（国际/跨境）"
         kind = "往返" if self.trip_type.currentIndex() else "单程"
+        return_hint = (
+            f"<p style='color:#9a5a0d'>如需返程，请另建一条 "
+            f"{destination.airport_iata} → {origin.airport_iata} 的反向航程，单独监控返程价格。</p>"
+            if market == "domestic" else ""
+        )
         self.summary.setText(
             f"<h2>{origin.display_text} → {destination.display_text}</h2>"
             f"<p>{origin.city_name_zh} → {destination.city_name_zh} · {kind}</p>"
             f"<p>出发：{self.departure_date.date().toString('yyyy-MM-dd')} · "
             f"{self.start_time.time().toString('HH:mm')}–{self.end_time.time().toString('HH:mm')}</p>"
             f"<p>来源自动匹配：<b>{source}</b></p>"
+            f"{return_hint}"
             "<p>下一步请选择立即开始监控，或仅保存为暂停。</p>"
         )
 
@@ -484,6 +515,45 @@ def _layout_widget(layout: QHBoxLayout) -> QWidget:
     widget = QWidget()
     widget.setLayout(layout)
     return widget
+
+
+def _date_field(editor: QDateEdit, label: str, parent: QWidget) -> QWidget:
+    row = QHBoxLayout()
+    row.setContentsMargins(0, 0, 0, 0)
+    row.setSpacing(8)
+    row.addWidget(editor, 1)
+    button = QPushButton("▦  选日期", objectName="datePickerButton")
+    button.setMinimumWidth(112)
+    button.setMinimumHeight(41)
+    button.setToolTip(f"打开日历选择{label}日期")
+    button.clicked.connect(lambda: _open_date_picker(editor, label, parent))
+    row.addWidget(button)
+    return _layout_widget(row)
+
+
+def _open_date_picker(editor: QDateEdit, label: str, parent: QWidget) -> None:
+    dialog = QDialog(parent, objectName="datePickerDialog")
+    dialog.setWindowTitle(f"选择{label}日期")
+    dialog.setMinimumSize(430, 370)
+    layout = QVBoxLayout(dialog)
+    layout.setContentsMargins(20, 17, 20, 19)
+    layout.setSpacing(12)
+    layout.addWidget(QLabel(f"选择{label}日期", objectName="sectionTitle"))
+    calendar = QCalendarWidget()
+    calendar.setObjectName("datePickerCalendar")
+    calendar.setMinimumDate(editor.minimumDate())
+    calendar.setMaximumDate(editor.maximumDate())
+    calendar.setSelectedDate(editor.date())
+    calendar.setGridVisible(True)
+    calendar.setFirstDayOfWeek(Qt.DayOfWeek.Monday)
+    calendar.setVerticalHeaderFormat(QCalendarWidget.VerticalHeaderFormat.NoVerticalHeader)
+    layout.addWidget(calendar, 1)
+    layout.addWidget(QLabel("点击日期即可选中；也可以直接在原输入框键入日期。", objectName="fieldHint"))
+    def choose(chosen: QDate) -> None:
+        editor.setDate(chosen)
+        dialog.accept()
+    calendar.clicked.connect(choose)
+    dialog.exec()
 
 
 def _time_layout(start: QTimeEdit, end: QTimeEdit) -> QHBoxLayout:

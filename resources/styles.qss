@@ -95,5 +95,13 @@ QLabel#fieldHint { color: #7387a4; font-size: 12px; }
 QFrame#wizardPreview { background: #f5f9ff; border: 1px solid #dbe8fa; border-radius: 13px; }
 QPushButton#periodButton:checked { background: #1b6ce7; color: white; border-color: #1b6ce7; }
 QPushButton#periodButton:checked:hover { background: #105dcf; color: white; }
+QPushButton#datePickerButton { background: #eef5ff; border: 1px solid #b7d2fa; color: #1764cf; font-weight: 700; padding: 8px 10px; }
+QPushButton#datePickerButton:hover { background: #dcecff; border-color: #76a7f0; }
+QLabel#domesticTripHint { background: #fffbf2; color: #915507; border: 1px solid #f0ddb3; border-radius: 9px; padding: 10px 12px; }
+QDialog#datePickerDialog { background: #ffffff; }
+QCalendarWidget#datePickerCalendar { background: white; border: 1px solid #dbe5f3; border-radius: 10px; }
+QCalendarWidget#datePickerCalendar QToolButton { min-height: 35px; border: 0; background: #f3f8ff; color: #152d55; font-weight: 700; padding: 5px; }
+QCalendarWidget#datePickerCalendar QToolButton:hover { background: #e3efff; }
+QCalendarWidget#datePickerCalendar QAbstractItemView { font-size: 14px; background: white; color: #203759; selection-background-color: #1b6ce7; selection-color: white; }
 QFrame#card:hover { border-color: #c9daf1; }
 QLabel#routeLatest { color: #1162cf; font-weight: 700; }
