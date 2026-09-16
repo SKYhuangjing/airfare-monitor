@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 from ..desktop_app.preferences import PreferencesManager
 from ..desktop_app.settings_repository import DesktopSettings
 from .preferences import RuntimePreferencesForm, preference_card
+from .app_icon import application_icon
 
 
 class OnboardingDialog(QDialog):
@@ -88,9 +89,16 @@ class OnboardingDialog(QDialog):
         panel.setFixedWidth(335)
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(38, 52, 38, 35)
-        title = QLabel("✈  航价守望", objectName="onboardingBrandTitle")
-        title.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        layout.addWidget(title)
+        title_row = QHBoxLayout()
+        title_row.setSpacing(10)
+        brand_icon = QLabel()
+        brand_icon.setPixmap(application_icon().pixmap(46, 46))
+        title_row.addWidget(brand_icon)
+        title = QLabel("航价守望", objectName="onboardingBrandTitle")
+        title.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        title_row.addWidget(title)
+        title_row.addStretch()
+        layout.addLayout(title_row)
         layout.addWidget(QLabel("让每一次出行，都更值得期待", objectName="onboardingBrandText"))
         layout.addStretch()
         message = QLabel("关注航价变化\n把更好的旅程，带到你身边", objectName="onboardingBrandText")

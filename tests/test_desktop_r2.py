@@ -58,7 +58,9 @@ class DesktopR2Tests(unittest.TestCase):
         self.assertIn((32, 32), available)
         pixmap = icon.pixmap(64, 64)
         self.assertFalse(pixmap.isNull())
-        self.assertGreater(pixmap.toImage().pixelColor(32, 32).lightness(), 200)
+        center = pixmap.toImage().pixelColor(32, 32)
+        self.assertGreater(center.alpha(), 0)
+        self.assertGreater(center.blue(), center.red())
 
     def test_route_cards_show_existing_actions_and_capacity(self):
         with TemporaryDirectory() as temp:
@@ -71,6 +73,8 @@ class DesktopR2Tests(unittest.TestCase):
             self.assertEqual(page.capacity.text(), "已启用 1 / 10 个航程")
             self.assertEqual(page.capacity_bar.value(), 1)
             self.assertEqual(len(page.cards), 1)
+            self.assertEqual(page.cards[0].objectName(), "managedRouteCard")
+            self.assertGreaterEqual(page.cards[0].minimumHeight(), 363)
             buttons = page.cards[0].findChildren(QPushButton)
             self.assertEqual(
                 {button.text() for button in buttons},
@@ -222,6 +226,9 @@ class DesktopR2Tests(unittest.TestCase):
             page.refresh([_route("route-1")])
             self.assertEqual(page.route_combo.count(), 1)
             self.assertEqual(page.records.rowCount(), 0)
+            self.assertEqual(page.records.columnCount(), 3)
+            page.set_period(24 * 7)
+            self.assertEqual(page.period_summary.text(), "▣  最近 7 天")
             page.close()
 
 

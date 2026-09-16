@@ -132,6 +132,21 @@ class DesktopR1Tests(unittest.TestCase):
                 manager,
                 on_run_now=lambda: False,
             )
+            self.assertTrue(all(not button.icon().isNull() for button in window.nav_buttons))
+            self.assertTrue(all(button.iconSize().width() == 22 for button in window.nav_buttons))
+            self.assertFalse(window.system.save_button.icon().isNull())
+            self.assertEqual(window.system.service_health.objectName(), "systemHealthCard")
+            self.assertEqual(window.system.storage_health.property("accent"), "blue")
+            self.assertEqual(window.system.query_health.property("accent"), "violet")
+            self.assertIsNotNone(window.system.form.redetect_button)
+            self.assertEqual(window.system.form.redetect_button.objectName(), "redetectButton")
+            window.system.set_runtime("等待下轮", "下一次自动查询将在 30 分钟后开始。")
+            self.assertEqual(window.system.runtime_label.text(), "运行状态：等待下轮")
+            self.assertIn("30 分钟", window.system.runtime_detail_label.text())
+            self.assertEqual((window.dashboard.runtime_control.width(), window.dashboard.runtime_control.height()), (108, 40))
+            self.assertEqual((window.dashboard.pause_button.width(), window.dashboard.pause_button.height()), (112, 40))
+            self.assertEqual((window.dashboard.run_button.width(), window.dashboard.run_button.height()), (116, 40))
+            self.assertEqual((window.dashboard.add_button.width(), window.dashboard.add_button.height()), (118, 40))
             emitted: list[DesktopSettings] = []
             window.runtime_settings_saved.connect(emitted.append)
             window.system.form.interval_combo.setCurrentIndex(

@@ -34,6 +34,7 @@ from ..storage import SQLiteStore
 class FlightResultsPage(QWidget):
     def __init__(self, store: SQLiteStore | None, *, on_back: Callable[[], None]):
         super().__init__()
+        self.setObjectName("pageCanvas")
         self.store = store
         self.on_back = on_back
         self.route: LegConfig | None = None
@@ -74,7 +75,7 @@ class FlightResultsPage(QWidget):
             metrics.addWidget(card, 1)
         layout.addLayout(metrics)
 
-        filters = QFrame(objectName="filterCard")
+        filters = QFrame(objectName="toolbarCard")
         filter_layout = QHBoxLayout(filters)
         filter_layout.setContentsMargins(14, 10, 14, 10)
         self.search = QLineEdit()
@@ -295,6 +296,7 @@ class FlightResultsPage(QWidget):
 class FlightComparisonDialog(QDialog):
     def __init__(self, candidates: list[dict[str, object]], parent: QWidget | None = None):
         super().__init__(parent)
+        self.setObjectName("comparisonDialog")
         self.setWindowTitle("对比航班")
         self.resize(920, 560)
         layout = QVBoxLayout(self)

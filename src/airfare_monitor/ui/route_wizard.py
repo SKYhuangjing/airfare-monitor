@@ -4,11 +4,12 @@ import uuid
 from datetime import date, time
 from decimal import Decimal, InvalidOperation
 
-from PySide6.QtCore import QDate, QTime, Qt
+from PySide6.QtCore import QDate, QPoint, QTime, Qt
+from PySide6.QtGui import QColor, QPainter, QPolygon
 from PySide6.QtWidgets import (
     QAbstractSpinBox, QCalendarWidget, QCheckBox, QComboBox, QDateEdit, QDialog,
-    QFormLayout, QFrame, QHBoxLayout, QLabel,
-    QLineEdit, QMessageBox, QPushButton, QSpinBox, QStackedWidget, QTimeEdit, QVBoxLayout, QWidget,
+    QFormLayout, QFrame, QGridLayout, QHBoxLayout, QLabel,
+    QLineEdit, QMessageBox, QPushButton, QSpinBox, QStackedWidget, QVBoxLayout, QWidget,
 )
 
 from ..desktop_app.airport_catalog import AirportCatalog, AirportRecord
@@ -16,6 +17,112 @@ from ..desktop_app.controller import DesktopController
 from ..market import resolve_market
 from ..models import EtdWindow, LegConfig, PreferredSchedule
 from .widgets.airport_picker import AirportPicker
+from .dashboard_page import _icon_label
+
+
+class ComboDropButton(QPushButton):
+    """Font-independent chevron so the drop affordance always renders."""
+
+    def paintEvent(self, event) -> None:  # noqa: N802 - Qt API
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor("#1768d8" if self.underMouse() else "#52739f"))
+        center_x, center_y = self.width() // 2, self.height() // 2
+        painter.drawPolygon(QPolygon([
+            QPoint(center_x - 4, center_y - 2),
+            QPoint(center_x + 4, center_y - 2),
+            QPoint(center_x, center_y + 3),
+        ]))
+
+
+class ArrowComboBox(QComboBox):
+    """Combo box with an explicit drop target independent of platform styling."""
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.drop_button = ComboDropButton("", self, objectName="comboDropButton")
+        self.drop_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.drop_button.clicked.connect(self.showPopup)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt API
+        super().resizeEvent(event)
+        width = 32
+        self.drop_button.setGeometry(self.width() - width - 1, 1, width, max(0, self.height() - 2))
+        self.drop_button.raise_()
+
+
+class TimeComboBox(ArrowComboBox):
+    """Editable time selector with a clean drop-down instead of native spinners."""
+
+    def __init__(self, value: QTime, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setObjectName("timeCombo")
+        self.setEditable(True)
+        self.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self._value = value
+        for minutes in range(0, 24 * 60, 15):
+            hour, minute = divmod(minutes, 60)
+            self.addItem(f"{hour:02d}:{minute:02d}")
+        self.addItem("23:59")
+        self.setTime(value)
+        self.editTextChanged.connect(self._remember_valid_time)
+
+    def time(self) -> QTime:
+        parsed = QTime.fromString(self.currentText().strip(), "H:mm")
+        return parsed if parsed.isValid() else self._value
+
+    def setTime(self, value: QTime) -> None:  # noqa: N802 - mirrors QTimeEdit
+        self._value = value
+        text = value.toString("HH:mm")
+        index = self.findText(text)
+        if index >= 0:
+            self.setCurrentIndex(index)
+        else:
+            self.setEditText(text)
+
+    def _remember_valid_time(self, text: str) -> None:
+        parsed = QTime.fromString(text.strip(), "H:mm")
+        if parsed.isValid():
+            self._value = parsed
+
+
+class StepperSpinBox(QFrame):
+    """Spin box with themeable, larger step targets used by the route wizard."""
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setObjectName("stepperSpin")
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        self.editor = QSpinBox()
+        self.editor.setObjectName("stepperValue")
+        self.editor.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+        layout.addWidget(self.editor, 1)
+        controls = QVBoxLayout()
+        controls.setContentsMargins(0, 2, 2, 2)
+        controls.setSpacing(1)
+        self.up = QPushButton("▲", objectName="spinStepButton")
+        self.down = QPushButton("▼", objectName="spinStepButton")
+        for button in (self.up, self.down):
+            button.setFixedSize(28, 19)
+            button.setAutoRepeat(True)
+        self.up.clicked.connect(self.editor.stepUp)
+        self.down.clicked.connect(self.editor.stepDown)
+        controls.addWidget(self.up)
+        controls.addWidget(self.down)
+        layout.addLayout(controls)
+
+    def setRange(self, minimum: int, maximum: int) -> None:  # noqa: N802
+        self.editor.setRange(minimum, maximum)
+
+    def setValue(self, value: int) -> None:  # noqa: N802
+        self.editor.setValue(value)
+
+    def value(self) -> int:
+        return self.editor.value()
 
 
 class RouteWizard(QDialog):
@@ -23,6 +130,7 @@ class RouteWizard(QDialog):
         self, catalog: AirportCatalog, controller: DesktopController, route: LegConfig | None = None, parent: QWidget | None = None
     ):
         super().__init__(parent)
+        self.setObjectName("routeWizard")
         self.catalog = catalog
         self.controller = controller
         self.route = route
@@ -50,7 +158,22 @@ class RouteWizard(QDialog):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(27, 23, 27, 22)
         layout.setSpacing(17)
-        layout.addWidget(QLabel("编辑航程" if route else "添加航程", objectName="pageTitle"))
+        heading = QHBoxLayout()
+        heading_copy = QVBoxLayout()
+        heading_copy.addWidget(QLabel("编辑航程" if route else "添加航程", objectName="pageTitle"))
+        heading_copy.addWidget(QLabel("三步完成设置，查询来源与能力边界将自动匹配", objectName="muted"))
+        heading.addLayout(heading_copy)
+        heading.addStretch()
+        heading.addWidget(
+            QLabel(
+                "探索世界\n从一张好机票开始",
+                objectName="brandMotto",
+                alignment=Qt.AlignmentFlag.AlignCenter,
+            )
+        )
+        heading.addSpacing(18)
+        heading.addWidget(QLabel("最多同时启用 10 条", objectName="neutralPill"))
+        layout.addLayout(heading)
         self.step_labels = [QLabel() for _ in range(3)]
         step_bar = QHBoxLayout()
         step_bar.addStretch()
@@ -77,7 +200,7 @@ class RouteWizard(QDialog):
     def _build_fields(self) -> None:
         self.origin_picker = AirportPicker(self.catalog)
         self.destination_picker = AirportPicker(self.catalog)
-        self.trip_type = QComboBox()
+        self.trip_type = ArrowComboBox()
         self.trip_type.addItems(["单程", "往返"])
         self.departure_date = QDateEdit()
         self.departure_date.setMinimumDate(QDate.currentDate())
@@ -90,26 +213,26 @@ class RouteWizard(QDialog):
         self.return_date.setDisplayFormat("yyyy-MM-dd")
         self.return_date.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         self.departure_date.dateChanged.connect(self._sync_return_date_minimum)
-        self.start_time = QTimeEdit(QTime(0, 0))
-        self.end_time = QTimeEdit(QTime(23, 59))
+        self.start_time = TimeComboBox(QTime(0, 0))
+        self.end_time = TimeComboBox(QTime(23, 59))
         self.departure_period = _period_combo()
-        self.return_start_time = QTimeEdit(QTime(0, 0))
-        self.return_end_time = QTimeEdit(QTime(23, 59))
+        self.return_start_time = TimeComboBox(QTime(0, 0))
+        self.return_end_time = TimeComboBox(QTime(23, 59))
         self.return_period = _period_combo()
         self.direct_only = QCheckBox("只看直达航班")
         self.direct_only.setChecked(True)
-        self.max_layover = QSpinBox()
+        self.max_layover = StepperSpinBox()
         self.max_layover.setRange(30, 1440)
         self.max_layover.setValue(240)
         self.price = QLineEdit(placeholderText="留空表示只观察，不触发低价提醒")
         self.enabled = QCheckBox("保存后立即启用监控")
         self.enabled.setChecked(True)
-        self.adult_count = QSpinBox()
+        self.adult_count = StepperSpinBox()
         self.adult_count.setRange(1, 9)
         self.adult_count.setValue(1)
-        self.child_count = QSpinBox()
+        self.child_count = StepperSpinBox()
         self.child_count.setRange(0, 8)
-        self.cabin_class = QComboBox()
+        self.cabin_class = ArrowComboBox()
         for label, value in (
             ("经济舱", "economy"),
             ("高级经济舱", "premium_economy"),
@@ -119,9 +242,9 @@ class RouteWizard(QDialog):
             self.cabin_class.addItem(label, value)
         self.focus_enabled = QCheckBox("添加重点班次（可选）")
         self.focus_label = QLineEdit(placeholderText="例如：早班直飞")
-        self.focus_departure = QTimeEdit(QTime(8, 0))
-        self.focus_arrival = QTimeEdit(QTime(12, 0))
-        self.focus_tolerance = QSpinBox()
+        self.focus_departure = TimeComboBox(QTime(8, 0))
+        self.focus_arrival = TimeComboBox(QTime(12, 0))
+        self.focus_tolerance = StepperSpinBox()
         self.focus_tolerance.setRange(0, 360)
         self.focus_tolerance.setValue(30)
         self.departure_period.currentIndexChanged.connect(
@@ -199,27 +322,64 @@ class RouteWizard(QDialog):
         layout = QVBoxLayout(page)
         card = QFrame(objectName="card")
         card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(25, 21, 25, 21)
-        card_layout.setSpacing(13)
+        card_layout.setContentsMargins(23, 19, 23, 18)
+        card_layout.setSpacing(11)
         card_layout.addWidget(QLabel("价格与班次", objectName="sectionTitle"))
         card_layout.addWidget(QLabel("选择你关心的含税价位与出行偏好，保存前仍会检查现有规则。", objectName="muted"))
+
+        price_panel = QFrame(objectName="wizardSection")
+        price_layout = QHBoxLayout(price_panel)
+        price_layout.setContentsMargins(15, 10, 15, 10)
+        price_copy = QVBoxLayout()
+        price_copy.setSpacing(2)
+        price_copy.addWidget(QLabel("含税心理价位（CNY）", objectName="formSectionLabel"))
+        price_copy.addWidget(QLabel("留空表示只观察，不触发低价提醒", objectName="fieldHint"))
+        price_layout.addLayout(price_copy, 2)
+        price_layout.addWidget(self.price, 3)
+        card_layout.addWidget(price_panel)
+
+        flight_panel = QFrame(objectName="wizardSection")
+        flight_layout = QVBoxLayout(flight_panel)
+        flight_layout.setContentsMargins(15, 11, 15, 12)
+        flight_layout.setSpacing(8)
+        flight_title = QHBoxLayout()
+        flight_title.setSpacing(5)
+        flight_title.addWidget(_icon_label("plane", "#176be3", "transparent", 24))
+        flight_title.addWidget(QLabel("班次设置", objectName="formSectionLabel"))
+        flight_title.addStretch()
+        flight_layout.addLayout(flight_title)
         form = QFormLayout()
-        form.setSpacing(12)
+        form.setHorizontalSpacing(16)
+        form.setVerticalSpacing(8)
         form.addRow("筛选", self.direct_only)
         self.layover_label = QLabel("最长总中转等待")
         form.addRow(self.layover_label, self.max_layover)
-        form.addRow("含税心理价位（CNY）", self.price)
         form.addRow("重点班次", self.focus_enabled)
         form.addRow("重点班次名称", self.focus_label)
         form.addRow("重点起飞时间", self.focus_departure)
         form.addRow("重点到达时间", self.focus_arrival)
         form.addRow("时间容差（分钟）", self.focus_tolerance)
-        form.addRow("成人", self.adult_count)
-        form.addRow("儿童", self.child_count)
-        form.addRow("舱位", self.cabin_class)
-        card_layout.addLayout(form)
-        note = QLabel("价格比较、历史和提醒均使用解析后的 CNY 含税总价。")
-        note.setObjectName("muted")
+        flight_layout.addLayout(form)
+        card_layout.addWidget(flight_panel)
+
+        passenger_panel = QFrame(objectName="wizardSection")
+        passenger_layout = QGridLayout(passenger_panel)
+        passenger_layout.setContentsMargins(15, 10, 15, 10)
+        passenger_layout.setHorizontalSpacing(12)
+        passenger_layout.addWidget(QLabel("●  乘客与舱位", objectName="formSectionLabel"), 0, 0, 1, 6)
+        passenger_layout.addWidget(QLabel("成人"), 1, 0)
+        passenger_layout.addWidget(self.adult_count, 1, 1)
+        passenger_layout.addWidget(QLabel("儿童"), 1, 2)
+        passenger_layout.addWidget(self.child_count, 1, 3)
+        passenger_layout.addWidget(QLabel("舱位"), 1, 4)
+        passenger_layout.addWidget(self.cabin_class, 1, 5)
+        passenger_layout.setColumnStretch(1, 1)
+        passenger_layout.setColumnStretch(3, 1)
+        passenger_layout.setColumnStretch(5, 2)
+        card_layout.addWidget(passenger_panel)
+
+        note = QLabel("ⓘ  价格比较、历史和提醒均使用解析后的 CNY 含税总价。")
+        note.setObjectName("infoStrip")
         card_layout.addWidget(note)
         layout.addWidget(card, 1)
         return page
@@ -556,7 +716,7 @@ def _open_date_picker(editor: QDateEdit, label: str, parent: QWidget) -> None:
     dialog.exec()
 
 
-def _time_layout(start: QTimeEdit, end: QTimeEdit) -> QHBoxLayout:
+def _time_layout(start: TimeComboBox, end: TimeComboBox) -> QHBoxLayout:
     layout = QHBoxLayout()
     layout.setContentsMargins(0, 0, 0, 0)
     layout.addWidget(start)
@@ -566,7 +726,7 @@ def _time_layout(start: QTimeEdit, end: QTimeEdit) -> QHBoxLayout:
 
 
 def _period_combo() -> QComboBox:
-    combo = QComboBox()
+    combo = ArrowComboBox()
     combo.addItem("全天", (0, 0, 23, 59))
     combo.addItem("上午", (6, 0, 12, 0))
     combo.addItem("下午", (12, 0, 18, 0))
@@ -575,7 +735,7 @@ def _period_combo() -> QComboBox:
     return combo
 
 
-def _apply_period(combo: QComboBox, start: QTimeEdit, end: QTimeEdit) -> None:
+def _apply_period(combo: QComboBox, start: TimeComboBox, end: TimeComboBox) -> None:
     period = combo.currentData()
     if not isinstance(period, tuple):
         return

@@ -5,8 +5,8 @@ from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
 
-from PySide6.QtCore import QUrl, Qt, Signal
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtCore import QPointF, QRectF, QSize, QUrl, Qt, Signal
+from PySide6.QtGui import QColor, QDesktopServices, QIcon, QPainter, QPainterPath, QPen, QPixmap, QPolygonF
 from PySide6.QtWidgets import (
     QFrame, QGridLayout, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QProgressBar,
     QFileDialog, QPushButton, QScrollArea, QSizePolicy, QStackedWidget, QTableWidget, QTableWidgetItem,
@@ -28,14 +28,72 @@ from ..desktop_app.diagnostics import export_diagnostic_zip
 from ..desktop_app.view_data import load_dashboard_data
 from ..models import LegConfig
 from ..storage import SQLiteStore
-from .dashboard_page import DashboardPage
+from .dashboard_page import DashboardPage, _icon_label, _plain_icon
 from .flight_results_page import FlightResultsPage
 from .history_page import HistoryPage
 from .preferences import RuntimePreferencesForm, preference_card
 from .notifications_page import NotificationsPage
 from .route_wizard import RouteWizard
 from .app_icon import application_icon
+from .aircraft_assets import aircraft_mark_pixmap
+from .theme import AviationPageStack
+from .support import SupportDialog, SupportPromptState, locate_support_assets
 from .. import __version__
+
+
+def _nav_icon(kind: str) -> QIcon:
+    """Create aligned two-state vector icons instead of relying on font glyph metrics."""
+
+    icon = QIcon()
+    for color, mode, state in (
+        ("#5c7394", QIcon.Mode.Normal, QIcon.State.Off),
+        ("#176be3", QIcon.Mode.Active, QIcon.State.Off),
+        ("#176be3", QIcon.Mode.Normal, QIcon.State.On),
+        ("#176be3", QIcon.Mode.Active, QIcon.State.On),
+    ):
+        icon.addPixmap(_nav_pixmap(kind, QColor(color)), mode, state)
+    return icon
+
+
+def _nav_pixmap(kind: str, color: QColor) -> QPixmap:
+    if kind == "plane":
+        return aircraft_mark_pixmap(24)
+    pixmap = QPixmap(24, 24)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setPen(QPen(color, 2.0, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    if kind == "home":
+        painter.drawPolyline(QPolygonF([QPointF(4, 11), QPointF(12, 4), QPointF(20, 11)]))
+        painter.drawRoundedRect(QRectF(6.5, 10, 11, 9.5), 1.5, 1.5)
+    elif kind == "history":
+        painter.drawLine(QPointF(4, 4), QPointF(4, 20))
+        painter.drawLine(QPointF(4, 20), QPointF(21, 20))
+        painter.drawPolyline(QPolygonF([QPointF(6, 16), QPointF(10, 12), QPointF(14, 14), QPointF(20, 7)]))
+    elif kind == "bell":
+        path = QPainterPath(QPointF(6, 16))
+        path.lineTo(8, 13)
+        path.lineTo(8, 9)
+        path.quadTo(8, 4.5, 12, 4.5)
+        path.quadTo(16, 4.5, 16, 9)
+        path.lineTo(16, 13)
+        path.lineTo(18, 16)
+        path.closeSubpath()
+        painter.drawPath(path)
+        painter.drawArc(QRectF(9.5, 16, 5, 4), 0, -180 * 16)
+    else:
+        painter.drawEllipse(QRectF(6, 6, 12, 12))
+        painter.drawEllipse(QRectF(10, 10, 4, 4))
+        for start, end in (
+            ((12, 2.5), (12, 5)), ((12, 19), (12, 21.5)),
+            ((2.5, 12), (5, 12)), ((19, 12), (21.5, 12)),
+            ((5.3, 5.3), (7, 7)), ((17, 17), (18.7, 18.7)),
+            ((18.7, 5.3), (17, 7)), ((7, 17), (5.3, 18.7)),
+        ):
+            painter.drawLine(QPointF(*start), QPointF(*end))
+    painter.end()
+    return pixmap
 
 
 class MainWindow(QMainWindow):
@@ -66,6 +124,10 @@ class MainWindow(QMainWindow):
         self.outputs_dir = outputs_dir
         self.latest_report_path: Path | None = None
         self._latest_prices: dict[str, Decimal] = {}
+        self._support_assets = locate_support_assets()
+        self._support_prompt_state = SupportPromptState(
+            self.preferences.repository.user_root / "data" / "support-prompt.json"
+        )
         self.setWindowTitle("航价守望")
         self.setMinimumSize(1100, 720)
         self.resize(1370, 860)
@@ -81,24 +143,28 @@ class MainWindow(QMainWindow):
         self.refresh_from_history()
 
     def _build(self) -> None:
-        root = QWidget()
+        root = QWidget(objectName="workspaceRoot")
         layout = QHBoxLayout(root)
         layout.setContentsMargins(0, 0, 0, 0)
         self.sidebar = self._make_sidebar()
         layout.addWidget(self.sidebar)
-        self.pages = QStackedWidget()
+        self.pages = AviationPageStack()
         self.dashboard = DashboardPage(
             self._open_new_route,
             self._run_now,
             self._toggle_pause,
             lambda: self._switch_page(1),
             self._open_results,
+            lambda: self._switch_page(4),
+            open_support=self._open_support if self._support_assets.available else None,
+            support_prompt_state=self._support_prompt_state,
         )
         self.routes_page = RoutesPage(self.controller, self.catalog, open_results=self._open_results)
         self.history = HistoryPage(
             self.history_store,
             open_latest_report=self.open_latest_report,
             outputs_dir=self.outputs_dir,
+            open_activity=lambda: self._switch_page(4),
         )
         self.notifications = NotificationsPage(
             self.preferences,
@@ -137,14 +203,14 @@ class MainWindow(QMainWindow):
 
     def _make_sidebar(self) -> QWidget:
         sidebar = QFrame(objectName="sidebar")
-        sidebar.setFixedWidth(246)
+        sidebar.setFixedWidth(264)
         layout = QVBoxLayout(sidebar)
-        layout.setContentsMargins(13, 25, 13, 20)
-        layout.setSpacing(4)
+        layout.setContentsMargins(16, 28, 16, 22)
+        layout.setSpacing(6)
         brand_row = QHBoxLayout()
         brand_row.setSpacing(10)
         brand_icon = QLabel()
-        brand_icon.setPixmap(application_icon().pixmap(44, 44))
+        brand_icon.setPixmap(application_icon().pixmap(50, 50))
         brand_row.addWidget(brand_icon)
         brand_copy = QVBoxLayout()
         brand_copy.setSpacing(0)
@@ -152,11 +218,13 @@ class MainWindow(QMainWindow):
         brand_copy.addWidget(QLabel("让更好的旅程发生", objectName="tagline"))
         brand_row.addLayout(brand_copy, 1)
         layout.addLayout(brand_row)
-        layout.addSpacing(35)
+        layout.addSpacing(38)
         self.nav_buttons: list[QPushButton] = []
-        for index, (icon, text) in enumerate((("⌂", "概览"), ("✈", "我的航程"), ("▥", "历史价格"), ("◉", "通知设置"), ("⚙", "系统状态"))):
-            button = QPushButton(f"{icon}     {text}", objectName="navButton", checkable=True)
-            button.setMinimumHeight(48)
+        for index, (icon_kind, text) in enumerate((("home", "概览"), ("plane", "我的航程"), ("history", "历史价格"), ("bell", "通知设置"), ("settings", "系统状态"))):
+            button = QPushButton(text, objectName="navButton", checkable=True)
+            button.setIcon(_nav_icon(icon_kind))
+            button.setIconSize(QSize(22, 22))
+            button.setMinimumHeight(52)
             button.clicked.connect(lambda checked=False, i=index: self._switch_page(i))
             layout.addWidget(button)
             self.nav_buttons.append(button)
@@ -164,8 +232,18 @@ class MainWindow(QMainWindow):
         layout.addStretch()
         layout.addWidget(QLabel("关注价格，也关注更大的世界。", objectName="sidebarNote", alignment=Qt.AlignmentFlag.AlignCenter))
         layout.addWidget(QLabel("个人工具  ·  同时最多 10 条", objectName="sidebarNote", alignment=Qt.AlignmentFlag.AlignCenter))
+        if self._support_assets.available:
+            support_button = QPushButton("支持一下", objectName="sidebarSupport")
+            support_button.setToolTip("完全自愿，不影响任何功能")
+            support_button.clicked.connect(self._open_support)
+            layout.addWidget(support_button, alignment=Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(QLabel(f"v{__version__}", objectName="sidebarVersion", alignment=Qt.AlignmentFlag.AlignCenter))
         return sidebar
+
+    def _open_support(self) -> None:
+        if not self._support_assets.available:
+            return
+        SupportDialog(self._support_assets, self).exec()
 
     def _switch_page(self, index: int) -> None:
         self.pages.setCurrentIndex(index)
@@ -369,6 +447,7 @@ class RoutesPage(QWidget):
         self.routes: list[LegConfig] = []
         self._runtime_status: dict[str, str] = {}
         self.cards: list[QFrame] = []
+        self.setObjectName("pageCanvas")
         layout = QVBoxLayout(self)
         layout.setContentsMargins(30, 28, 30, 28)
         layout.setSpacing(19)
@@ -383,7 +462,9 @@ class RoutesPage(QWidget):
         header.addWidget(add)
         layout.addLayout(header)
 
-        capacity_row = QHBoxLayout()
+        capacity_card = QFrame(objectName="toolbarCard")
+        capacity_row = QHBoxLayout(capacity_card)
+        capacity_row.setContentsMargins(16, 10, 16, 10)
         self.capacity = QLabel(objectName="capacityText")
         capacity_row.addWidget(self.capacity)
         self.capacity_bar = QProgressBar()
@@ -393,7 +474,7 @@ class RoutesPage(QWidget):
         self.capacity_bar.setMaximumWidth(360)
         capacity_row.addWidget(self.capacity_bar, 1)
         capacity_row.addStretch()
-        layout.addLayout(capacity_row)
+        layout.addWidget(capacity_card)
 
         self.empty_label = QLabel(
             "还没有航程。点击右上角“添加航程”，两分钟内即可开始监控。",
@@ -434,9 +515,14 @@ class RoutesPage(QWidget):
             self.cards_grid.addWidget(card, index // 2, index % 2)
 
     def _route_card(self, route: LegConfig) -> QFrame:
-        card = QFrame(objectName="routeCard")
-        card.setMinimumHeight(325)
-        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        card = QFrame(objectName="managedRouteCard")
+        # The refreshed theme uses taller controls and typography.  Reserve
+        # enough vertical room for both rows in the four-field summary instead
+        # of allowing QVBoxLayout to compress their labels at display scaling.
+        card.setMinimumHeight(365)
+        # Ignore content-driven horizontal size hints so both grid columns stay
+        # visually equal even when one route has a longer transfer preference.
+        card.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         layout = QVBoxLayout(card)
         layout.setContentsMargins(20, 17, 20, 16)
         layout.setSpacing(13)
@@ -454,7 +540,11 @@ class RoutesPage(QWidget):
         route_row = QHBoxLayout()
         route_row.addLayout(_airport_block(route.origin_name_zh, route.origin_airport_iata))
         route_row.addStretch()
-        route_row.addWidget(QLabel("✈  →" if not route.return_date else "✈  ⇄", objectName="routeArrow"))
+        direction = QHBoxLayout()
+        direction.setSpacing(1)
+        direction.addWidget(_icon_label("plane", "#176be3", "transparent", 27))
+        direction.addWidget(QLabel("→" if not route.return_date else "⇄", objectName="routeArrow"))
+        route_row.addLayout(direction)
         route_row.addStretch()
         route_row.addLayout(_airport_block(route.destination_name_zh, route.destination_airport_iata))
         layout.addLayout(route_row)
@@ -469,6 +559,7 @@ class RoutesPage(QWidget):
         layout.addLayout(tags)
 
         summary = QFrame(objectName="routeSummary")
+        summary.setMinimumHeight(94)
         details = QGridLayout(summary)
         details.setContentsMargins(13, 11, 13, 11)
         details.setHorizontalSpacing(14)
@@ -583,28 +674,40 @@ class SystemStatusPage(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
-        host = QWidget()
+        host = QWidget(objectName="pageHost")
         layout = QVBoxLayout(host)
         layout.setContentsMargins(30, 28, 30, 28)
         layout.setSpacing(15)
         scroll.setWidget(host)
         outer.addWidget(scroll)
         title_row = QHBoxLayout()
-        title_row.addWidget(QLabel("系统状态", objectName="pageTitle"))
+        title_row.setSpacing(14)
+        title_row.addWidget(_icon_label("settings", "#2878eb", "#e5f0ff", 54))
+        title_copy = QVBoxLayout()
+        title_copy.setSpacing(2)
+        title_copy.addWidget(QLabel("系统状态", objectName="pageTitle"))
+        title_copy.addWidget(
+            QLabel("查看监控健康、浏览器设置与最近运行记录；运行偏好可随时调整。", objectName="muted")
+        )
+        title_row.addLayout(title_copy)
         title_row.addStretch()
-        title_row.addWidget(QLabel(f"v{__version__}", objectName="muted"))
-        self.save_button = QPushButton("保存设置", objectName="primary")
+        title_row.addWidget(QLabel(f"v{__version__}", objectName="systemVersion"))
+        self.save_button = QPushButton("保存设置", objectName="systemSaveButton")
+        self.save_button.setIcon(_plain_icon("save", "#ffffff"))
         self.save_button.clicked.connect(self._save_settings)
         title_row.addWidget(self.save_button)
         layout.addLayout(title_row)
-        layout.addWidget(QLabel("查看监控健康、浏览器设置与最近运行记录；运行偏好可随时调整。", objectName="muted"))
         health_row = QHBoxLayout()
-        self.service_health = _health_card("监控服务", "等待启动")
+        health_row.setSpacing(14)
+        self.service_health = _health_card("监控服务", "等待启动", "监控服务当前状态", "status", "green")
         self.storage_health = _health_card(
             "数据存储",
             "正常" if history_store is not None else "不可用",
+            "数据存储状态良好" if history_store is not None else "无法读取价格数据库",
+            "database",
+            "blue",
         )
-        self.query_health = _health_card("航班查询", "等待首次查询")
+        self.query_health = _health_card("航班查询", "等待首次查询", "系统运行状态", "plane", "violet")
         for card in (self.service_health, self.storage_health, self.query_health):
             health_row.addWidget(card, 1)
         layout.addLayout(health_row)
@@ -623,15 +726,10 @@ class SystemStatusPage(QWidget):
         self.browser_warning.hide()
         layout.addWidget(self.browser_warning)
 
-        profile = QFrame(objectName="infoCard")
-        profile_layout = QVBoxLayout(profile)
-        profile_layout.addWidget(QLabel("独立浏览器空间", objectName="sectionTitle"))
-        profile_layout.addWidget(
-            QLabel(
-                "航价守望使用自己的浏览器 Profile，不会读取或修改你日常 Chrome/Edge 的收藏、Cookie 和登录状态。",
-                objectName="muted",
-                wordWrap=True,
-            )
+        profile = _system_info_card(
+            "cube",
+            "独立浏览器空间",
+            "航价守望使用自己的浏览器 Profile，不会读取或修改你日常 Chrome/Edge 的收藏、Cookie 和登录状态。",
         )
         layout.addWidget(profile)
 
@@ -670,23 +768,37 @@ class SystemStatusPage(QWidget):
         self.attention_card.hide()
         layout.addWidget(self.attention_card)
 
-        paths_card = QFrame(objectName="card")
-        paths_layout = QVBoxLayout(paths_card)
-        paths_layout.addWidget(QLabel("本地数据位置", objectName="sectionTitle"))
+        paths_card = QFrame(objectName="systemInfoCard")
+        paths_layout = QHBoxLayout(paths_card)
+        paths_layout.setContentsMargins(20, 13, 20, 13)
+        paths_layout.setSpacing(13)
+        paths_layout.addWidget(_icon_label("folder", "#2878eb", "#e8f2ff", 42), alignment=Qt.AlignmentFlag.AlignTop)
+        paths_copy = QVBoxLayout()
+        paths_copy.setSpacing(3)
+        paths_copy.addWidget(QLabel("本地数据位置", objectName="systemSectionTitle"))
         profile_path = self.preferences.repository.load_core().browser.user_data_path
-        paths_layout.addWidget(QLabel(f"独立 Profile：{profile_path}", objectName="muted", wordWrap=True))
+        paths_copy.addWidget(QLabel(f"独立 Profile：{profile_path}", objectName="muted", wordWrap=True))
         if history_store is not None:
-            paths_layout.addWidget(QLabel(f"价格数据库：{history_store.path}", objectName="muted", wordWrap=True))
+            paths_copy.addWidget(QLabel(f"价格数据库：{history_store.path}", objectName="muted", wordWrap=True))
         if outputs_dir is not None:
-            open_outputs = QPushButton("打开报告目录")
+            open_outputs = QPushButton("打开报告目录", objectName="systemOutlineButton")
+            open_outputs.setIcon(_plain_icon("folder", "#176be3"))
             open_outputs.clicked.connect(
                 lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(outputs_dir.resolve())))
             )
-            paths_layout.addWidget(open_outputs, alignment=Qt.AlignmentFlag.AlignLeft)
+            paths_copy.addWidget(open_outputs, alignment=Qt.AlignmentFlag.AlignLeft)
+        paths_layout.addLayout(paths_copy, 1)
         layout.addWidget(paths_card)
-        layout.addWidget(self.routes_label)
-        self.runtime_label = QLabel("运行状态：等待启动", objectName="muted")
-        layout.addWidget(self.runtime_label)
+        summary_row = QHBoxLayout()
+        summary_row.setSpacing(24)
+        self.routes_label.setObjectName("systemSummary")
+        summary_row.addWidget(self.routes_label)
+        self.runtime_label = QLabel("运行状态：等待启动", objectName="systemSummary")
+        summary_row.addWidget(self.runtime_label)
+        summary_row.addStretch()
+        layout.addLayout(summary_row)
+        self.runtime_detail_label = QLabel("监控服务尚未启动。", objectName="muted", wordWrap=True)
+        layout.addWidget(self.runtime_detail_label)
         events_card = QFrame(objectName="card")
         events_layout = QVBoxLayout(events_card)
         events_layout.setContentsMargins(20, 16, 20, 16)
@@ -772,7 +884,8 @@ class SystemStatusPage(QWidget):
         self.routes_label.setText(f"启用航程：{self._enabled_route_count} / {MAX_ENABLED_LEGS}")
 
     def set_runtime(self, title: str, detail: str) -> None:
-        self.runtime_label.setText(f"运行状态：{title}\n{detail}")
+        self.runtime_label.setText(f"运行状态：{title}")
+        self.runtime_detail_label.setText(detail)
         _set_health(self.service_health, title)
         if title in {"本轮完成", "等待下轮", "最近完成"}:
             _set_health(self.query_health, "最近查询正常")
@@ -824,21 +937,46 @@ def _add_detail(layout: QGridLayout, row: int, column: int, title: str, value: s
     layout.addLayout(block, row, column)
 
 
-def _health_card(title: str, value: str) -> QFrame:
-    card = QFrame(objectName="healthCard")
+def _health_card(title: str, value: str, detail: str, icon: str, accent: str) -> QFrame:
+    tones = {
+        "green": ("#19a56e", "#ddf7eb"),
+        "blue": ("#2878eb", "#e6f0ff"),
+        "violet": ("#7258de", "#eeeaff"),
+    }
+    color, background = tones[accent]
+    card = QFrame(objectName="systemHealthCard")
+    card.setProperty("accent", accent)
     layout = QVBoxLayout(card)
-    layout.setContentsMargins(17, 14, 17, 14)
+    layout.setContentsMargins(18, 14, 18, 14)
+    layout.setSpacing(3)
     row = QHBoxLayout()
-    row.addWidget(QLabel({"监控服务": "◉", "数据存储": "▥", "航班查询": "✈"}.get(title, "●"), objectName="metricIcon"))
-    row.addWidget(QLabel(title, objectName="muted"))
+    row.setSpacing(9)
+    row.addWidget(_icon_label(icon, color, background, 32))
+    row.addWidget(QLabel(title, objectName="systemHealthTitle"))
     row.addStretch()
     layout.addLayout(row)
     layout.addWidget(QLabel(value, objectName="healthValue"))
+    layout.addWidget(QLabel(detail, objectName="systemHealthDetail"))
     return card
 
 
 def _set_health(card: QFrame, value: str) -> None:
     card.findChild(QLabel, "healthValue").setText(value)
+
+
+def _system_info_card(icon: str, title: str, detail: str) -> QFrame:
+    card = QFrame(objectName="systemInfoCard")
+    layout = QHBoxLayout(card)
+    layout.setContentsMargins(20, 13, 20, 13)
+    layout.setSpacing(13)
+    layout.addWidget(_icon_label(icon, "#2878eb", "#e8f2ff", 42))
+    copy = QVBoxLayout()
+    copy.setSpacing(3)
+    copy.addWidget(QLabel(title, objectName="systemSectionTitle"))
+    copy.addWidget(QLabel(detail, objectName="muted", wordWrap=True))
+    layout.addLayout(copy, 1)
+    layout.addWidget(_icon_label(icon, "#b8d5fb", "transparent", 48))
+    return card
 
 
 def _market_name(route: LegConfig) -> str:

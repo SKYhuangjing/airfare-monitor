@@ -8,8 +8,8 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
-    QFormLayout,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 
 from ..desktop_app.browser_detector import BrowserCandidate, BrowserDetector
 from ..desktop_app.settings_repository import DesktopSettings
+from .dashboard_page import _icon_label, _plain_icon
 
 
 class RuntimePreferencesForm(QWidget):
@@ -34,29 +35,42 @@ class RuntimePreferencesForm(QWidget):
     ):
         super().__init__(parent)
         self._initial = settings
-        self.browser_combo = QComboBox()
-        self.interval_combo = QComboBox()
+        self.setObjectName("runtimePreferencesForm")
+        self.browser_combo = QComboBox(objectName="runtimeBrowserCombo")
+        self.interval_combo = QComboBox(objectName="runtimeIntervalCombo")
         for minutes in (30, 60, 120):
             self.interval_combo.addItem(f"{minutes} 分钟", minutes)
-        self.show_browser = QCheckBox("显示浏览器运行过程")
-        self.desktop_notifications = QCheckBox("开启桌面通知")
-        self.autostart = QCheckBox("登录 Windows 后自动启动")
+        self.show_browser = QCheckBox("显示浏览器运行过程", objectName="runtimeOption")
+        self.desktop_notifications = QCheckBox("开启桌面通知", objectName="runtimeOption")
+        self.autostart = QCheckBox("登录 Windows 后自动启动", objectName="runtimeOption")
         self.browser_status = QLabel(objectName="muted", wordWrap=True)
 
         browser_row = QHBoxLayout()
+        browser_row.setSpacing(12)
         browser_row.addWidget(self.browser_combo, 1)
+        self.redetect_button: QPushButton | None = None
         if show_redetect:
-            redetect = QPushButton("重新检测")
-            redetect.clicked.connect(self.redetect_requested.emit)
-            browser_row.addWidget(redetect)
+            self.redetect_button = QPushButton("重新检测", objectName="redetectButton")
+            self.redetect_button.setIcon(_plain_icon("refresh", "#176be3"))
+            self.redetect_button.clicked.connect(self.redetect_requested.emit)
+            browser_row.addWidget(self.redetect_button)
 
-        form = QFormLayout()
-        form.setSpacing(14)
-        form.addRow("用于查询的浏览器", _layout_widget(browser_row))
-        form.addRow("自动查询间隔", self.interval_combo)
-        form.addRow("浏览器窗口", self.show_browser)
-        form.addRow("价格提醒", self.desktop_notifications)
-        form.addRow("开机启动", self.autostart)
+        form = QGridLayout()
+        form.setContentsMargins(0, 0, 0, 0)
+        form.setHorizontalSpacing(14)
+        form.setVerticalSpacing(12)
+        form.setColumnStretch(2, 1)
+        rows = (
+            ("link", "用于查询的浏览器", _layout_widget(browser_row)),
+            ("clock", "自动查询间隔", self.interval_combo),
+            ("desktop", "浏览器窗口", self.show_browser),
+            ("bell", "价格提醒", self.desktop_notifications),
+            ("power", "开机启动", self.autostart),
+        )
+        for row, (kind, title, control) in enumerate(rows):
+            form.addWidget(_icon_label(kind, "#4b70a3", "transparent", 26), row, 0)
+            form.addWidget(QLabel(title, objectName="runtimeFieldLabel"), row, 1)
+            form.addWidget(control, row, 2)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -122,14 +136,20 @@ class RuntimePreferencesForm(QWidget):
 
 
 def preference_card(title: str, subtitle: str, form: QWidget) -> QFrame:
-    card = QFrame(objectName="card")
+    card = QFrame(objectName="systemSettingsCard")
     layout = QVBoxLayout(card)
-    layout.setContentsMargins(24, 20, 24, 20)
-    layout.setSpacing(8)
-    heading = QLabel(title, objectName="sectionTitle")
-    layout.addWidget(heading)
-    layout.addWidget(QLabel(subtitle, objectName="muted", wordWrap=True))
-    layout.addSpacing(8)
+    layout.setContentsMargins(24, 18, 24, 20)
+    layout.setSpacing(12)
+    heading_row = QHBoxLayout()
+    heading_row.setSpacing(12)
+    heading_row.addWidget(_icon_label("settings", "#2778eb", "#e8f2ff", 44))
+    heading_copy = QVBoxLayout()
+    heading_copy.setSpacing(2)
+    heading_copy.addWidget(QLabel(title, objectName="systemSectionTitle"))
+    heading_copy.addWidget(QLabel(subtitle, objectName="muted", wordWrap=True))
+    heading_row.addLayout(heading_copy, 1)
+    layout.addLayout(heading_row)
+    layout.addSpacing(2)
     layout.addWidget(form)
     return card
 

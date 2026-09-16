@@ -8,14 +8,14 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QDate, QTimer
-from PySide6.QtWidgets import QApplication, QCalendarWidget, QPushButton
+from PySide6.QtCore import QDate, QTime, QTimer
+from PySide6.QtWidgets import QApplication, QCalendarWidget, QLabel, QPushButton
 
 from airfare_monitor.app_paths import AppPaths
 from airfare_monitor.desktop_app.airport_catalog import AirportCatalog
 from airfare_monitor.desktop_app.controller import DesktopController
 from airfare_monitor.desktop_app.route_repository import RouteRepository
-from airfare_monitor.ui.route_wizard import RouteWizard
+from airfare_monitor.ui.route_wizard import RouteWizard, StepperSpinBox, TimeComboBox
 
 
 class DateAndDomesticGuidanceTests(unittest.TestCase):
@@ -74,6 +74,32 @@ class DateAndDomesticGuidanceTests(unittest.TestCase):
             wizard._update_capability()
             self.assertTrue(wizard.trip_type.model().item(1).isEnabled())
             self.assertTrue(wizard.domestic_roundtrip_hint.isHidden())
+            wizard.close()
+
+    def test_refreshed_time_and_stepper_controls_preserve_values(self) -> None:
+        time_picker = TimeComboBox(QTime(0, 0))
+        time_picker.resize(180, 44)
+        self.assertTrue(time_picker.drop_button.isVisibleTo(time_picker))
+        self.assertGreaterEqual(time_picker.drop_button.width(), 30)
+        time_picker.setEditText("0:08")
+        self.assertEqual(time_picker.time(), QTime(0, 8))
+        time_picker.setTime(QTime(23, 59))
+        self.assertEqual(time_picker.currentText(), "23:59")
+
+        stepper = StepperSpinBox()
+        stepper.setRange(0, 8)
+        stepper.setValue(2)
+        stepper.up.click()
+        self.assertEqual(stepper.value(), 3)
+        stepper.down.click()
+        self.assertEqual(stepper.value(), 2)
+
+    def test_route_wizard_includes_brand_motto(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            wizard = self._wizard(temp)
+            motto = wizard.findChild(QLabel, "brandMotto")
+            self.assertIsNotNone(motto)
+            self.assertEqual(motto.text(), "探索世界\n从一张好机票开始")
             wizard.close()
 
 

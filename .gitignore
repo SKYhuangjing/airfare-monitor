@@ -10,6 +10,11 @@ dist/
 build-*/
 dist-*/
 release/
+AirfareMonitor-v*/
+AirfareMonitor-v*.zip
+
+# Private, build-time-only assets (for example personal payment QR codes)
+private-assets/
 
 # Secrets and local configuration
 .env

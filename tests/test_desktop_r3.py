@@ -13,6 +13,8 @@ from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtCore import QPoint, Qt
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from airfare_monitor.app_paths import AppPaths
@@ -72,7 +74,29 @@ class DesktopR3Tests(unittest.TestCase):
             with patch("airfare_monitor.ui.notifications_page.send_test_message") as sender:
                 page = NotificationsPage(preferences, repository)
                 self.assertEqual(page.test_button.text(), "发送测试邮件并保存")
+                self.assertEqual(page.save_button.text(), "保存设置")
+                self.assertEqual(page.reset_button.text(), "重置")
                 self.assertEqual(page.password.echoMode(), page.password.EchoMode.Password)
+                page.desktop_toggle.setChecked(False)
+                page.mail_toggle.setChecked(True)
+                self.assertEqual(page.desktop_state.text(), "已关闭")
+                self.assertEqual(page.mail_state.text(), "已开启")
+                page.show()
+                self.app.processEvents()
+                for toggle in (page.desktop_toggle, page.mail_toggle):
+                    toggle.setChecked(False)
+                    QTest.mouseClick(
+                        toggle,
+                        Qt.MouseButton.LeftButton,
+                        pos=toggle.rect().center(),
+                    )
+                    self.assertTrue(toggle.isChecked())
+                    QTest.mouseClick(
+                        toggle,
+                        Qt.MouseButton.LeftButton,
+                        pos=QPoint(toggle.width() - 4, toggle.height() // 2),
+                    )
+                    self.assertFalse(toggle.isChecked())
                 sender.assert_not_called()
                 page.close()
 

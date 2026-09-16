@@ -9,7 +9,15 @@ datas = [
     (str(ROOT / "resources" / "routes.default.yaml"), "resources"),
     (str(ROOT / "resources" / "settings.default.yaml"), "resources"),
     (str(ROOT / "resources" / "styles.qss"), "resources"),
+    (str(ROOT / "resources" / "aviation-background.png"), "resources"),
+    (str(ROOT / "resources" / "aircraft-mark.png"), "resources"),
+    (str(ROOT / "resources" / "app-icon-master.png"), "resources"),
 ]
+private_support = ROOT / "private-assets" / "support"
+for filename in ("alipay.png", "wechat.png"):
+    source = private_support / filename
+    if source.is_file():
+        datas.append((str(source), "resources/support"))
 datas += collect_data_files("airportsdata")
 hiddenimports = collect_submodules("DrissionPage")
 hiddenimports += collect_submodules("keyring.backends")
