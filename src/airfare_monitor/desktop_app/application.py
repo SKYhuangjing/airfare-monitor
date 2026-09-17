@@ -14,6 +14,7 @@ import PySide6
 from ..app_paths import AppPaths
 from ..storage import SQLiteStore
 from ..ui.app_icon import application_icon
+from ..ui.i18n import install_chinese_translations
 from ..ui.main_window import MainWindow
 from ..ui.onboarding import OnboardingDialog
 from .airport_catalog import AirportCatalog
@@ -42,6 +43,7 @@ def validate_ui_runtime(paths: AppPaths) -> str:
     app.setApplicationName("航价守望")
     app.setWindowIcon(application_icon())
     _apply_style(app, paths.resource_root)
+    install_chinese_translations(app, paths.resource_root)
     catalog = AirportCatalog.load(paths.resource_root / "airports.zh.json")
     controller = DesktopController(RouteRepository(paths.routes_path))
     preferences = PreferencesManager(SettingsRepository(paths.settings_path, user_root=paths.user_root))
@@ -71,6 +73,7 @@ def run_desktop(paths: AppPaths, *, start_hidden: bool = False) -> int:
     app.setWindowIcon(application_icon())
     app.setQuitOnLastWindowClosed(False)
     _apply_style(app, paths.resource_root)
+    install_chinese_translations(app, paths.resource_root)
     catalog = AirportCatalog.load(paths.resource_root / "airports.zh.json")
     controller = DesktopController(RouteRepository(paths.routes_path))
     instance = SingleInstance()
@@ -234,8 +237,6 @@ def run_desktop(paths: AppPaths, *, start_hidden: bool = False) -> int:
 
 def _apply_style(app: QApplication, resource_root: Path) -> None:
     stylesheet = resource_root / "styles.qss"
-    if not stylesheet.is_file():
-        stylesheet = Path(__file__).resolve().parents[1] / "ui" / "resources" / "styles.qss"
     if stylesheet.is_file():
         app.setStyleSheet(stylesheet.read_text(encoding="utf-8"))
 

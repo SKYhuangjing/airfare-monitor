@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -110,12 +111,15 @@ class PriceChart(QWidget):
         padding = max(Decimal("20"), (high - low) * Decimal("0.12"))
         low -= padding
         high += padding
+        low, high, tick_step = _nice_axis_bounds(low, high)
         span = high - low or Decimal("1")
+        grid_lines = max(2, int(round(span / tick_step)) + 1)
         painter.setPen(QPen(QColor("#e8eef6"), 1))
-        for step in range(5):
-            y = area.top() + area.height() * step / 4
+        for step in range(grid_lines):
+            fraction = Decimal(step) / Decimal(grid_lines - 1)
+            y = area.top() + area.height() * float(fraction)
             painter.drawLine(area.left(), int(y), area.right(), int(y))
-            price = high - span * Decimal(step) / Decimal(4)
+            price = high - span * fraction
             label = f"{price:,.0f}"
             painter.setPen(QColor("#7287a6"))
             painter.drawText(QRectF(0, y - 9, 55, 18), Qt.AlignmentFlag.AlignRight, label)
@@ -449,6 +453,23 @@ def _decimal(value: object) -> Decimal | None:
     if value is None or value == "":
         return None
     return Decimal(str(value))
+
+
+def _nice_axis_bounds(low: Decimal, high: Decimal) -> tuple[Decimal, Decimal, Decimal]:
+    """把绘图范围外扩到整数刻度，让 Y 轴标签落在可读的整数上。"""
+    lo, hi = float(low), float(high)
+    raw_step = max((hi - lo) / 4, 1.0)
+    magnitude = 10 ** math.floor(math.log10(raw_step))
+    step = next(
+        multiplier * magnitude
+        for multiplier in (1, 2, 2.5, 5, 10)
+        if multiplier * magnitude >= raw_step
+    )
+    axis_low = math.floor(lo / step) * step
+    axis_high = math.ceil(hi / step) * step
+    if axis_high <= axis_low:
+        axis_high = axis_low + step
+    return Decimal(str(axis_low)), Decimal(str(axis_high)), Decimal(str(step))
 
 
 def _datetime(value: object) -> datetime | None:

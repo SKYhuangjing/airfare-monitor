@@ -1043,9 +1043,9 @@ def _stored_result_status(row: dict[str, object]) -> str:
     status = str(row.get("status", ""))
     price = _optional_decimal(row.get("minimum_total_price_cny"))
     if status == "success" and price is not None:
-        return f"最近完成 · {_price_text(price)}"
+        return f"完成 · {_price_text(price)}"
     if status == "success":
-        return "最近完成 · 无符合条件航班"
+        return "完成 · 无符合条件航班"
     if status == "manual_attention":
         return "需要人工处理"
     return "最近查询失败"

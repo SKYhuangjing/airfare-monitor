@@ -18,6 +18,8 @@ datas = [
     (str(ROOT / "resources" / "routes.default.yaml"), "resources"),
     (str(ROOT / "resources" / "settings.default.yaml"), "resources"),
     (str(ROOT / "resources" / "styles.qss"), "resources"),
+    (str(ROOT / "resources" / "i18n" / "qtbase_zh_CN.qm"), "resources/i18n"),
+    (str(ROOT / "resources" / "i18n" / "qt_zh_CN.qm"), "resources/i18n"),
     (str(ROOT / "resources" / "aviation-background.png"), "resources"),
     (str(ROOT / "resources" / "aircraft-mark.png"), "resources"),
     (str(ROOT / "resources" / "app-icon-master.png"), "resources"),
