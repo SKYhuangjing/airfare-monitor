@@ -9,6 +9,7 @@ from pathlib import Path
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QCursor, QGuiApplication
 from PySide6.QtWidgets import QApplication, QDialog, QMenu, QMessageBox, QSystemTrayIcon
+import PySide6
 
 from ..app_paths import AppPaths
 from ..storage import SQLiteStore
@@ -239,10 +240,28 @@ def _apply_style(app: QApplication, resource_root: Path) -> None:
         app.setStyleSheet(stylesheet.read_text(encoding="utf-8"))
 
 
+def _native_tray_menu_supported() -> bool:
+    """QTBUG-147449（macOS 27 点击 QSystemTrayIcon 崩溃）的修复版本判断。
+
+    修复 commit 6192d9ed 于 2026-08 合入 6.11 分支，但 v6.11.2 tag 冻结早于
+    该合入，因此修复随 6.11.3 / 6.12 起（含）发布。6.11.2 及更早版本仍会崩，
+    必须使用 activated()+QMenu.popup 的防崩路径。
+    """
+    try:
+        major, minor, patch = (int(part) for part in PySide6.__version__.split(".")[:3])
+    except ValueError:
+        return False
+    if (major, minor) > (6, 11):
+        return True
+    return (major, minor) == (6, 11) and patch >= 3
+
+
 def _create_tray(app: QApplication, window: MainWindow, coordinator: MonitorCoordinator) -> QSystemTrayIcon:
     icon = application_icon()
     tray = QSystemTrayIcon(icon, app)
-    menu = QMenu()
+    menu = QMenu(objectName="trayMenu")
+    # QSS 圆角需要半透明窗口背景配合,否则四角会残留面板底色
+    menu.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
     # Keep the menu alive without setContextMenu(); otherwise it can be GC'd.
     tray._menu = menu  # type: ignore[attr-defined]
     open_action = menu.addAction("打开航价守望")
@@ -273,10 +292,11 @@ def _create_tray(app: QApplication, window: MainWindow, coordinator: MonitorCoor
     quit_action = menu.addAction("退出并停止监控")
     quit_action.triggered.connect(app.quit)
 
-    if sys.platform == "darwin":
-        # macOS 27 + Qt Cocoa: setContextMenu() opens the NSStatusItem menu through
-        # AppKit's expanded status-item path; Qt then calls -[NSEvent clickCount] on a
-        # KitDefined event and aborts. Popup a QMenu from activated() instead.
+    if sys.platform == "darwin" and not _native_tray_menu_supported():
+        # macOS 27 + Qt Cocoa（≤6.11.2，QTBUG-147449 未修复版）:
+        # setContextMenu() 会让 Qt 在状态栏菜单路径上对 KitDefined 事件调用
+        # -[NSEvent clickCount] 触发断言崩溃。改由 activated() 弹 QMenu。
+        # 一旦升级到含修复的 PySide6（≥6.11.3 / ≥6.12），自动回到原生菜单。
         tray.setToolTip("航价守望 · 点击打开菜单")
 
         def show_menu() -> None:

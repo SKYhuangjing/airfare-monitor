@@ -254,3 +254,37 @@ QWidget#onboardingContent { background: #f7faff; }
 QLabel#onboardingTitle { color: #0d2b55; font-size: 30px; font-weight: 700; }
 QLabel#onboardingBrandTitle { color: white; font-size: 29px; font-weight: 700; }
 QLabel#onboardingBrandText { color: #d9e9ff; font-size: 15px; }
+
+/* ── 托盘菜单（macOS 防崩路径下的 QMenu.popup）── 近似原生 NSMenu 观感：
+   半透明面板、大圆角、内缩的圆角高亮条、细分隔线。 */
+QMenu#trayMenu {
+    background: rgba(248, 249, 251, 242);
+    border: 1px solid rgba(120, 130, 150, 70);
+    border-radius: 12px;
+    padding: 5px 0;
+    font-size: 14px;
+    color: #1d1d1f;
+}
+QMenu#trayMenu::item {
+    padding: 5px 24px 5px 16px;
+    margin: 1px 7px;
+    border-radius: 7px;
+    color: #1d1d1f;
+}
+QMenu#trayMenu::item:selected {
+    background: #2563eb;
+    color: #ffffff;
+}
+QMenu#trayMenu::item:disabled {
+    color: #98989f;
+}
+QMenu#trayMenu::separator {
+    height: 1px;
+    background: rgba(120, 130, 150, 55);
+    margin: 5px 12px;
+}
+/* 可勾选项的文字本身会切换（暂停/继续），隐藏默认方块指示器更接近原生 */
+QMenu#trayMenu::indicator {
+    width: 0;
+    height: 0;
+}
