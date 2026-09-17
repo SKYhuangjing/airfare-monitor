@@ -200,6 +200,42 @@ class MainWindow(QMainWindow):
             self.pages.addWidget(page)
         layout.addWidget(self.pages, 1)
         self.setCentralWidget(root)
+        self._configure_status_bar()
+
+    def _configure_status_bar(self) -> None:
+        bar = self.statusBar()
+        bar.setObjectName("appStatusBar")
+        bar.setSizeGripEnabled(False)
+        host = QWidget(objectName="statusHost")
+        row = QHBoxLayout(host)
+        row.setContentsMargins(0, 0, 8, 0)
+        row.setSpacing(6)
+        self._status_dot = QLabel("●", objectName="statusBarDot")
+        self._status_dot.setProperty("tone", "idle")
+        self._status_text = QLabel("就绪", objectName="statusBarText")
+        self._status_meta = QLabel("", objectName="statusBarMeta")
+        row.addWidget(self._status_dot, 0, Qt.AlignmentFlag.AlignVCenter)
+        row.addWidget(self._status_text, 0, Qt.AlignmentFlag.AlignVCenter)
+        row.addWidget(self._status_meta, 1, Qt.AlignmentFlag.AlignVCenter)
+        bar.addWidget(host, 1)
+        self._set_status_message("就绪", "")
+
+    def _set_status_message(self, title: str, detail: str = "") -> None:
+        tone = "idle"
+        if title in {"正在查询", "正在准备"}:
+            tone = "busy"
+        elif title in {"本轮完成", "最近完成"}:
+            tone = "ok"
+        elif title in {"需要人工处理", "等待配置", "已暂停"}:
+            tone = "warn"
+        elif title in {"运行异常"}:
+            tone = "error"
+        self._status_dot.setProperty("tone", tone)
+        self._status_dot.style().unpolish(self._status_dot)
+        self._status_dot.style().polish(self._status_dot)
+        self._status_text.setText(title)
+        self._status_meta.setText(f"·  {detail}" if detail else "")
+        self.statusBar().clearMessage()
 
     def _make_sidebar(self) -> QWidget:
         sidebar = QFrame(objectName="sidebar")
@@ -330,7 +366,7 @@ class MainWindow(QMainWindow):
         if latest_run:
             finished = str(latest_run["finished_at"]).replace("T", " ")
             self.dashboard.set_runtime("最近完成", f"最近一轮：{finished} · {latest_run['status']}")
-            self.statusBar().showMessage(f"最近一轮：{finished} · {latest_run['status']}")
+            self._set_status_message("最近完成", f"{finished} · {latest_run['status']}")
 
     def handle_monitor_event(self, event: object) -> None:
         if isinstance(event, CoordinatorStateChanged):
@@ -369,7 +405,7 @@ class MainWindow(QMainWindow):
             else:
                 route_status = "查询失败"
             self.routes_page.set_leg_status(event.result.leg.id, route_status)
-            self.statusBar().showMessage(f"已完成 {event.index}/{event.total}：{route_status}")
+            self._set_status_message("正在查询", f"已完成 {event.index}/{event.total}：{route_status}")
         elif isinstance(event, CycleFinished):
             succeeded = sum(result.status.value == "success" for result in event.report.legs)
             total = event.total_legs or len(event.report.legs)
@@ -403,7 +439,7 @@ class MainWindow(QMainWindow):
     def _set_runtime(self, title: str, detail: str) -> None:
         self.dashboard.set_runtime(title, detail)
         self.system.set_runtime(title, detail)
-        self.statusBar().showMessage(f"{title} · {detail}")
+        self._set_status_message(title, detail)
         self.runtime_status_changed.emit(title)
 
     def activate(self) -> None:
