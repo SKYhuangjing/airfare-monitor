@@ -49,7 +49,7 @@ class AviationPageStack(QStackedWidget):
         painter.setOpacity(0.82)
         painter.setPen(QColor("#426a9f"))
         motto_font = QFont("KaiTi", 12)
-        motto_font.setFamilies(["STXingkai", "KaiTi", "Microsoft YaHei UI"])
+        motto_font.setFamilies(["STXingkai", "Kaiti SC", "Kaiti TC", "KaiTi", "Microsoft YaHei UI", "PingFang SC"])
         motto_font.setItalic(True)
         painter.setFont(motto_font)
         motto_width = 260

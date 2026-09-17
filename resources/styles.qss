@@ -1,5 +1,5 @@
 /* 航价守望 — designer-aligned light aviation theme */
-* { font-family: "Microsoft YaHei UI", "Segoe UI"; font-size: 13px; color: #14274a; }
+* { font-family: "Microsoft YaHei UI", "Segoe UI", "PingFang SC", "Helvetica Neue"; font-size: 13px; color: #14274a; }
 QMainWindow, QDialog { background: #f4f8fe; }
 QWidget#workspaceRoot { background: #f4f8fe; }
 QStackedWidget#contentPages, QWidget#pageCanvas, QWidget#pageHost { background: transparent; }
@@ -33,7 +33,7 @@ QLabel#healthValue { color: #148158; font-size: 17px; font-weight: 700; }
 QFrame#dashboardStatus { background: rgba(234, 244, 255, 248); border: 0; border-radius: 19px; }
 QLabel#dashboardStatusDot { color: #1974ed; font-size: 15px; }
 QLabel#dashboardStatusText { color: #1768d8; font-size: 13px; font-weight: 700; }
-QLabel#brandMotto { color: #426a9f; font-family: "STXingkai", "KaiTi", "Microsoft YaHei UI"; font-size: 14px; font-style: italic; padding: 3px 12px; }
+QLabel#brandMotto { color: #426a9f; font-family: "STXingkai", "Kaiti SC", "KaiTi", "Microsoft YaHei UI", "PingFang SC"; font-size: 14px; font-style: italic; padding: 3px 12px; }
 
 /* Buttons */
 QPushButton { border: 1px solid #c8d8ed; border-radius: 10px; background: rgba(255, 255, 255, 247); padding: 9px 16px; min-height: 20px; font-weight: 600; }

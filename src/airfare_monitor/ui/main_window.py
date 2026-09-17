@@ -718,7 +718,7 @@ class SystemStatusPage(QWidget):
         layout.addWidget(
             preference_card(
                 "浏览器与自动查询",
-                "设置会保存到当前 Windows 用户目录；浏览器显示方式从下一轮查询开始生效。",
+                "设置会保存到本机用户目录；浏览器显示方式从下一轮查询开始生效。",
                 self.form,
             )
         )

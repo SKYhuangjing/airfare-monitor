@@ -85,6 +85,16 @@ class LegConfig:
     return_etd_window: EtdWindow | None = None
     return_direct_only: bool | None = None
     return_max_layover_minutes: int | None = None
+    origin_airports: tuple[str, ...] | None = None
+    destination_airports: tuple[str, ...] | None = None
+
+    @property
+    def allowed_origin_airports(self) -> set[str]:
+        return set(self.origin_airports) if self.origin_airports else {self.origin_airport_iata}
+
+    @property
+    def allowed_destination_airports(self) -> set[str]:
+        return set(self.destination_airports) if self.destination_airports else {self.destination_airport_iata}
 
     @property
     def is_round_trip(self) -> bool:
