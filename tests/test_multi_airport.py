@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from dataclasses import replace
 from datetime import date, datetime, time
 from decimal import Decimal
 from pathlib import Path
@@ -10,7 +11,7 @@ from airfare_monitor.config import load_routes
 from airfare_monitor.desktop_app.airport_catalog import AirportCatalog
 from airfare_monitor.desktop_app.route_repository import RouteRepository
 from airfare_monitor.market import resolve_market
-from airfare_monitor.models import EtdWindow, LegConfig
+from airfare_monitor.models import EtdWindow, LegConfig, PreferredSchedule
 from airfare_monitor.parser import parse_completed_payload
 
 
@@ -106,7 +107,7 @@ class MultiAirportConfigAndRepoTests(unittest.TestCase):
             self.assertEqual(leg.origin_airports, ("SHA", "PVG"))
             self.assertEqual(leg.destination_airports, ("NRT", "HND"))
             self.assertEqual(leg.allowed_origin_airports, {"SHA", "PVG"})
-            self.assertEqual(leg.allowed_destination_airports, {"NRT", "HND"})
+            self.assertEqual(leg.allowed_destination_airports, {"TYO", "NRT", "HND"})
 
     def test_single_airport_leg_falls_back_to_singleton_set(self):
         single = _make_leg(origin="SHA", destination="NRT")
@@ -186,3 +187,100 @@ class MultiAirportParserFilterTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TongchengCityCodeCompletionTests(unittest.TestCase):
+    """回归:同程页面完成态回填城市码(如 BJS)时必须判定完成。"""
+
+    def _leg(self) -> LegConfig:
+        return _make_leg(
+            origin="BJS",
+            destination="CTU",
+            origin_airports=("PEK", "PKX"),
+            destination_airports=("CTU", "TFU"),
+        )
+
+    def test_page_state_with_city_code_completes(self):
+        from airfare_monitor.tongcheng_parser import is_completed_tongcheng_page_state
+
+        state = {
+            "Departure": "BJS",
+            "Arrival": "CTU",
+            "DepartureDate": "2026-10-02",
+            "dataflag": "last",
+            "flightLists": [{"x": 1}],
+        }
+        self.assertTrue(is_completed_tongcheng_page_state(state, self._leg()))
+
+    def test_api_payload_with_city_code_completes(self):
+        from airfare_monitor.tongcheng_parser import is_completed_tongcheng_payload
+
+        payload = {
+            "resCode": 0,
+            "apiSuccess": True,
+            "apiCode": 0,
+            "body": {
+                "FlyOffCityCode": "BJS",
+                "ArriveCityCode": "CTU",
+                "FlyOffTime": "2026-10-02 08:45",
+                "ErrorCode": 0,
+                "paging": {"dataflag": "all"},
+                "FlightInfoSimpleList": [{"x": 1}],
+                "FlightNum": 1,
+            },
+        }
+        self.assertTrue(is_completed_tongcheng_payload(payload, self._leg()))
+
+    def test_single_airport_still_rejects_other_city(self):
+        from airfare_monitor.tongcheng_parser import is_completed_tongcheng_page_state
+
+        single = _make_leg(origin="SHA", destination="XMN")
+        state = {
+            "Departure": "PVG",  # 上海全城码但对单机场航程是别的机场
+            "Arrival": "XMN",
+            "DepartureDate": "2026-10-02",
+            "dataflag": "last",
+            "flightLists": [],
+        }
+        self.assertFalse(is_completed_tongcheng_page_state(state, single))
+
+
+class PreferredScheduleCityWildcardTests(unittest.TestCase):
+    """回归:全城航程的重点班次按时刻匹配(机场字段为 None),单机场仍精确。"""
+
+    def test_city_preferred_matches_real_airport_flight(self):
+        from airfare_monitor.models import FlightSnapshot
+        from airfare_monitor.ranking import rank_flights
+
+        leg = _make_leg(
+            origin="BJS",
+            destination="TYO",
+            origin_airports=("PEK", "PKX"),
+            destination_airports=("NRT", "HND"),
+        )
+        leg = replace(
+            leg,
+            preferred_schedules=(
+                PreferredSchedule(
+                    label="早班机",
+                    departure_time=time(9, 0),
+                    arrival_time=time(13, 30),
+                    departure_tolerance_minutes=60,
+                    arrival_tolerance_minutes=60,
+                    origin_airport_iata=None,
+                    destination_airport_iata=None,
+                ),
+            ),
+        )
+        moment = datetime(2026, 10, 2, 9, 5)
+        flight = FlightSnapshot(
+            flight_signature="sig", flight_codes=("CA1",), carrier_codes=("CA",),
+            origin_airport_iata="PEK", destination_airport_iata="HND",
+            departure_date=date(2026, 10, 2), etd_local=moment, eta_local=datetime(2026, 10, 2, 13, 35),
+            duration_minutes=None, segment_count=1, is_direct=True,
+            base_price_cny=None, tax_cny=None, total_price_cny=Decimal("2000"), currency_code="CNY",
+            remaining_seats=None, free_baggage_piece=None, free_baggage_weight=None,
+            source_domain=None, captured_at=moment,
+        )
+        _, matches, _ = rank_flights([flight], leg)
+        self.assertIsNotNone(matches[0])

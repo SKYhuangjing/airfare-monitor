@@ -658,6 +658,17 @@ class RouteWizard(QDialog):
         assert origin and destination
         return_date = self.return_date.date().toPython() if self.trip_type.currentIndex() else None
         direct = self.direct_only.isChecked()
+        origin_airports = origin.child_airports if origin.is_city else (origin.airport_iata,)
+        destination_airports = destination.child_airports if destination.is_city else (destination.airport_iata,)
+        # 城市名必须保持纯净（如"北京"）：该名字会拼进同程/去哪儿的
+        # 结果页 URL（from= 参数），带"（全部）"之类后缀会让页面查询失效。
+        # 全城/单机场的区分由机场码（BJS vs PEK）与 child_airports 表达。
+        origin_name = origin.city_name_zh
+        dest_name = destination.city_name_zh
+        # 重点班次的机场过滤字段：选城市聚合时写 None（按时刻在全城航班中匹配），
+        # 写城市码（如 BJS）会导致与真实机场码（PEK）永远匹配不上。
+        preferred_origin_code = None if origin.is_city else origin.airport_iata
+        preferred_destination_code = None if destination.is_city else destination.airport_iata
         preferred: tuple[PreferredSchedule, ...] = ()
         if self.focus_enabled.isChecked():
             preferred = (
@@ -668,14 +679,10 @@ class RouteWizard(QDialog):
                     arrival_day_offset=0,
                     departure_tolerance_minutes=self.focus_tolerance.value(),
                     arrival_tolerance_minutes=self.focus_tolerance.value(),
-                    origin_airport_iata=origin.airport_iata,
-                    destination_airport_iata=destination.airport_iata,
+                    origin_airport_iata=preferred_origin_code,
+                    destination_airport_iata=preferred_destination_code,
                 ),
             )
-        origin_airports = origin.child_airports if origin.is_city else (origin.airport_iata,)
-        destination_airports = destination.child_airports if destination.is_city else (destination.airport_iata,)
-        origin_name = f"{origin.city_name_zh}（全部）" if origin.is_city else origin.city_name_zh
-        dest_name = f"{destination.city_name_zh}（全部）" if destination.is_city else destination.city_name_zh
 
         return LegConfig(
             id=self.route.id if self.route else f"route-{uuid.uuid4().hex[:8]}",

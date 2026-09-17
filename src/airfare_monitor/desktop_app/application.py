@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 
 from PySide6.QtCore import QTimer, Qt
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtGui import QCursor, QGuiApplication
 from PySide6.QtWidgets import QApplication, QDialog, QMenu, QMessageBox, QSystemTrayIcon
 
 from ..app_paths import AppPaths
@@ -242,10 +242,11 @@ def _apply_style(app: QApplication, resource_root: Path) -> None:
 def _create_tray(app: QApplication, window: MainWindow, coordinator: MonitorCoordinator) -> QSystemTrayIcon:
     icon = application_icon()
     tray = QSystemTrayIcon(icon, app)
-    tray.setToolTip("航价守望 · 等待监控（右键打开菜单）")
     menu = QMenu()
+    # Keep the menu alive without setContextMenu(); otherwise it can be GC'd.
+    tray._menu = menu  # type: ignore[attr-defined]
     open_action = menu.addAction("打开航价守望")
-    open_action.triggered.connect(window.showNormal)
+    open_action.triggered.connect(window.activate)
     run_action = menu.addAction("立即查询")
     run_action.triggered.connect(window._run_now)
     pause_action = menu.addAction("暂停监控")
@@ -271,6 +272,34 @@ def _create_tray(app: QApplication, window: MainWindow, coordinator: MonitorCoor
     menu.addSeparator()
     quit_action = menu.addAction("退出并停止监控")
     quit_action.triggered.connect(app.quit)
-    tray.setContextMenu(menu)
-    tray.activated.connect(lambda reason: window.showNormal() if reason == QSystemTrayIcon.ActivationReason.Trigger else None)
+
+    if sys.platform == "darwin":
+        # macOS 27 + Qt Cocoa: setContextMenu() opens the NSStatusItem menu through
+        # AppKit's expanded status-item path; Qt then calls -[NSEvent clickCount] on a
+        # KitDefined event and aborts. Popup a QMenu from activated() instead.
+        tray.setToolTip("航价守望 · 点击打开菜单")
+
+        def show_menu() -> None:
+            # 再延一拍：不要在 Cocoa 状态栏点击的通知观察者栈内同步弹菜单，
+            # 退出该栈后由事件循环统一处理，进一步避开 AppKit 断言路径。
+            QTimer.singleShot(0, lambda: menu.popup(QCursor.pos()))
+
+        def on_activated(reason: QSystemTrayIcon.ActivationReason) -> None:
+            if reason in {
+                QSystemTrayIcon.ActivationReason.Trigger,
+                QSystemTrayIcon.ActivationReason.DoubleClick,
+                QSystemTrayIcon.ActivationReason.Context,
+                QSystemTrayIcon.ActivationReason.MiddleClick,
+            }:
+                show_menu()
+
+        tray.activated.connect(on_activated)
+    else:
+        tray.setToolTip("航价守望 · 等待监控（右键打开菜单）")
+        tray.setContextMenu(menu)
+        tray.activated.connect(
+            lambda reason: window.activate()
+            if reason == QSystemTrayIcon.ActivationReason.Trigger
+            else None
+        )
     return tray

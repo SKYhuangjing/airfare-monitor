@@ -15,14 +15,24 @@ class MacAutostartTests(unittest.TestCase):
         from airfare_monitor.desktop_app import autostart
 
         self.module = autostart
+        # 无论在哪个平台运行，都强制走 macOS LaunchAgent 分支：
+        # Windows 上 Path.home() 跟随 USERPROFILE 而非 HOME，两个都指到临时目录。
+        self._mac_patcher = mock.patch.object(autostart, "_is_mac", return_value=True)
+        self._mac_patcher.start()
         self._home = os.environ.get("HOME")
+        self._user_profile = os.environ.get("USERPROFILE")
         self._temporary = tempfile.TemporaryDirectory()
         os.environ["HOME"] = self._temporary.name
+        os.environ["USERPROFILE"] = self._temporary.name
         self.manager = autostart.AutostartManager(command='"/opt/app binary" --background')
 
     def tearDown(self):
-        if self._home is not None:
-            os.environ["HOME"] = self._home
+        self._mac_patcher.stop()
+        for name, original in (("HOME", self._home), ("USERPROFILE", self._user_profile)):
+            if original is not None:
+                os.environ[name] = original
+            else:
+                os.environ.pop(name, None)
         self._temporary.cleanup()
 
     def _plist(self) -> Path:
