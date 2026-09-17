@@ -186,7 +186,12 @@ class DashboardPage(QWidget):
     def set_runtime(self, title: str, detail: str) -> None:
         self._runtime_title = title
         self._runtime_detail = detail
-        suffix = f" · 下次查询 {_friendly_time(self._next_run)}" if self._next_run else ""
+        next_already_shown = "下次" in detail
+        suffix = (
+            f" · 下次查询 {_friendly_time(self._next_run)}"
+            if self._next_run and not next_already_shown
+            else ""
+        )
         self.runtime_label.setText(title)
         self.runtime_detail_label.setText(f"{detail}{suffix}")
 
