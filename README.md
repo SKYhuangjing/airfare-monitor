@@ -1,565 +1,224 @@
-# Airfare Monitor
+# 航价守望 Airfare Monitor
 
-个人使用的多航程航班价格监控工具。程序使用 DrissionPage 控制一个独立 Chromium Profile，并按航线自动选择查询来源：中国大陆境内航线使用同程旅行，跨境/国际航线使用去哪儿。去哪儿按照正常页面流程填写搜索框并点击搜索；同程直接打开包含航线、中文城市名和日期的公开结果页 URL，不操作城市联想。程序只读取浏览器实际收到的数据。
+一个面向个人旅行者的 Windows 航价监控工具。安装后可以直接在桌面界面中选择机场、设置日期和心理价位，并持续查看 CNY 含税最低价、历史变化和同一轮查询中的全部航班候选。
 
-去哪儿只有 `result.ctrlInfo.completed == true` 的最终响应才会作为成功结果；同程直接结果页必须等到 Nuxt 页面状态报告 `dataflag == last`，并通过航线和日期一致性校验。程序支持单程价和去哪儿国际往返组合价，可分别限制去返程时间窗、直达要求及中转等待时间。结果写入 SQLite、生成一份合并 Excel，并发送一封手机可读的摘要邮件。
+> 当前版本：v0.6.17 · Windows 10/11 x64 · 个人工具 · 每台设备最多同时启用 10 条航程
 
-本项目只负责查询、记录和通知，不登录查询网站，不自动下单或支付，也不处理或绕过验证码、设备验证。
+![航价守望概览](docs/screenshots/v0.6.17/overview.png)
 
-## 已实现功能
+上图是当前概览页。左侧栏底部的“支持一下”是完全自愿的支持入口，不打赏也不会影响任何功能或后续使用。
 
-- 任意数量的启用航程串行采集，避免搜索会话互相干扰。
-- 自动判定中国大陆国内/跨境航线，分别使用同程旅行/去哪儿；每程可显式覆盖。
-- 机场/城市 IATA 代码联想选择，保存航班实际起降机场。
-- 仅接受完整搜索响应，不把中间增量结果记为成功。
-- 可按航程选择仅直达或允许中转，可限制总中转等待时间，并按 CNY 含税总价升序排列。
-- 国际往返直接解析去哪儿往返报价组合，监控平台给出的往返含税合计价，不把两个单程最低价相加。
-- 同一行程的多个供应商报价按完整航班签名去重，保留最低总价。
-- SQLite 历史记录、24 小时最低价历史和原始响应短期保存。
-- 一份合并 Excel 和一封合并邮件，不按航程分别发送。
-- 心理价位命中后二次确认，再使用低价命中邮件主题。
-- 单程失败自动重试一次；连续失败后重启独立浏览器。
-- CAPTCHA 或设备验证只标记为需要人工处理，不尝试绕过。
-- 进程锁防止两个调度任务同时运行。
+> 📍 支持入口：**左侧栏底部 → “支持一下” → 选择支付宝或微信**
 
-## 目录结构
+## 它能做什么
+
+- 使用中文、拼音或 IATA 搜索内置机场目录，保存真实机场三字码。
+- 中国大陆国内航线使用同程旅行；跨境、港澳台和国际航线使用去哪儿。
+- 同时管理最多 10 条启用航程，新增、编辑、复制、暂停、启用和删除均可在界面完成。
+- 支持国际单程、国际往返组合价，以及直达或中转航班筛选。
+- 记录 CNY 含税总价、价格历史、心理价位和本轮全部航班候选。
+- 对候选航班按价格、时段和行程类型筛选，并可选择 2～3 个航班进行横向对比。
+- 支持桌面提醒和 SMTP 邮件提醒；SMTP 授权码保存在 Windows 系统凭据中。
+- 使用独立 Chrome/Edge Profile，可选择显示浏览器过程或后台隐藏运行。
+- 关闭主窗口后继续在系统托盘运行，并提供立即查询、暂停/继续和完全退出入口。
+- 遇到验证码或设备验证时转为人工处理，不尝试绕过。
+
+## 界面导览
+
+### 概览
+
+概览页集中展示运行状态、今日最低价、启用航程数、最近成功时间和需要处理的事件。每张航程卡片都可以直接进入本轮航班候选。
+
+- 右上角：等待下轮/正在查询/已暂停状态，以及暂停、继续、立即查询和添加航程。
+- 中间：各航程的最低含税价、心理价位、更新时间和查询状态。
+- 右侧：最近查询、配置变化、低价命中和需要人工处理的动态。
+- 左下角：低调的“支持一下”入口，点击后可查看支付宝或微信二维码。
+
+### 我的航程
+
+![我的航程](docs/screenshots/v0.6.17/routes.png)
+
+“我的航程”以卡片形式展示具体机场、日期、出发时间窗、直达/中转偏好、心理价位和最近状态。复制出的航程默认暂停，删除航程不会清除已有价格历史。
+
+### 三步添加或编辑航程
+
+第一步选择具体机场、单程/往返、日期和去返程起飞时间窗：
+
+![航线与日期](docs/screenshots/v0.6.17/route-wizard-route.png)
+
+第二步设置心理价位、直达/中转、重点班次、乘客人数和舱位：
+
+![价格与班次](docs/screenshots/v0.6.17/route-wizard-preferences.png)
+
+第三步确认后保存。达到 10 条启用上限时，仍可将新航程保存为暂停状态。
+
+国内航线当前由同程提供单程直达查询。需要关注返程时，请再创建一条方向相反的国内单程航程；界面会给出相应提示。国际/跨境航线支持去哪儿返回的往返组合总价。
+
+### 历史价格
+
+![历史价格](docs/screenshots/v0.6.17/history.png)
+
+历史页展示当前含税价、区间最低、区间最高、有效价格曲线和最近查询记录。可切换最近 24 小时/7 天，并打开最新 Excel 或报告目录。
+
+蓝线代表获得了有效完整结果；红点代表查询失败、需要人工处理或该轮没有取得有效价格。橙色虚线是当前航程的心理价位。
+
+### 航班候选与对比
+
+![航班候选](docs/screenshots/v0.6.17/flight-candidates.png)
+
+最低价只是入口。每轮查询完成后，可以查看设置范围内保存的全部航班候选，包括：
+
+- 航班号、去返程时刻和总耗时；
+- 直达/中转以及最长中转等待；
+- CNY 含税总价、基础票价、税费、行李和余票提示；
+- 国际往返组合中的去程与返程信息。
+
+勾选 2～3 个候选后可以打开横向对比：
+
+![航班对比](docs/screenshots/v0.6.17/flight-comparison.png)
+
+### 通知设置
+
+桌面通知和邮件通知可以独立开启。桌面通知覆盖低价命中、查询失败、需要人工处理和邮件失败；普通成功轮次不会持续打扰。
+
+邮件支持 SSL/STARTTLS、多个收件人、测试邮件和 Excel 附件。授权码只进入 Windows Credential Locker，不写入 YAML、日志、诊断包或安装包。
+
+### 系统状态
+
+系统状态页可以查看监控服务、数据存储和最近查询健康度，并调整：
+
+- 用于查询的 Chrome/Edge；
+- 30/60/120 分钟自动查询间隔；
+- 显示或隐藏浏览器运行过程；
+- 桌面通知和登录 Windows 后自动启动；
+- 独立浏览器 Profile 与本地数据库位置。
+
+## “支持一下”说明
+
+“支持一下”位于所有主页面左侧栏的底部，在版本号上方。入口保持低调，不占用主导航，也不会弹出强制付款页面。
+
+点击后会显示支付宝和微信二维码，并明确说明：
+
+> 如果航价守望帮你守到了合适的价格、少花了一点时间，欢迎请作者喝杯咖啡。完全自愿，不支持也不会影响任何功能和正常使用。
+
+收款码属于发布者的私有打包资源：
+
+- 不保存在 GitHub 或 Gitee 仓库中；
+- 不进入配置、日志、数据库或诊断包；
+- 源码构建缺少私有收款码时，该入口会自动隐藏；
+- 应用不会记录用户是否扫码、支付或支付金额。
+
+## 安装和首次使用
+
+### 普通用户
+
+1. 从可信发布渠道取得 `AirfareMonitorSetup-<版本>.exe` 和同名 `.sha256` 文件。
+2. 校验 SHA-256 后运行安装器。当前内部版本未购买代码签名证书，Windows 可能显示“未知发布者”。
+3. 首次启动时选择检测到的 Chrome 或 Edge，并确认默认 30 分钟查询间隔和浏览器显示方式。
+4. 点击“添加航程”，完成三步设置后开始监控。
+5. 需要完全退出时，从系统托盘选择“退出并停止监控”。
+
+覆盖安装不会删除航程、历史价格、浏览器 Profile、Excel 报告或 Windows 凭据。普通卸载默认也保留用户数据。
+
+### 本地数据位置
+
+默认用户数据目录：
 
 ```text
-airfare-monitor/
-├── config/
-│   ├── routes.example.yaml      航程配置样例
-│   └── settings.example.yaml    运行配置样例
-├── data/                        SQLite、运行锁、独立浏览器 Profile
-├── docs/                        设计、数据模型、邮件与 Excel 说明
-├── logs/                        可用于保存重定向后的运行日志
-├── outputs/                     生成的 Excel
-├── src/airfare_monitor/         Python 源码
-├── tests/                       离线测试
-├── .env.example                 SMTP 环境变量样例
-└── pyproject.toml               项目及依赖定义
+%LOCALAPPDATA%/AirfareMonitor/
+├── config/                 航程和非敏感设置
+├── data/
+│   ├── airfare-monitor.sqlite3
+│   └── browser-profile/   独立浏览器空间
+├── logs/                   脱敏、轮转日志
+└── outputs/                Excel 报告
 ```
 
-真实的 `.env`、`config/routes.yaml`、`config/settings.yaml`、数据库、浏览器 Profile、日志和 Excel 都被 Git 忽略，不会随代码推送。新设备第一次使用时需要从样例复制并填写。
+应用不会读取用户日常 Chrome/Edge Profile，也不会把 Cookie、Token 或个人邮箱写入 Git。
 
-## 一、新设备快速安装
+## 查询来源与价格口径
 
-### 环境要求
+| 航线类型 | 查询来源 | 当前能力 |
+| --- | --- | --- |
+| 中国大陆国内 | 同程旅行 | 单程、直达、CNY 含税总价 |
+| 国际/跨境/港澳台 | 去哪儿 | 单程或往返组合、直达或中转、CNY 含税总价 |
 
-- Windows 10/11（当前已验证环境）。
-- Python 3.11 或更新版本，推荐 Python 3.12。
-- 可用的 Chrome、Chromium 或 Edge 浏览器。
-- 一个支持 SMTP 的邮箱及其 SMTP 授权码。
-- 能正常访问去哪儿国际机票和同程旅行机票页面。
+程序始终按解析后的 CNY 含税总价排序、保存和判断心理价位，不使用基础票价代替最终价格。
 
-### 1. 克隆代码
+去哪儿只有 `result.ctrlInfo.completed == true` 的最终响应才会作为成功结果；同程必须满足既有最终页面状态、航线和日期一致性校验。不完整响应不会写成成功价格，也不会触发低价提醒。
 
-从 Gitee 克隆：
+国际往返候选是一组不可拆分的“去程 + 返程 + 往返含税合计价”，不会把两个单程最低价自行相加。
 
-```powershell
-git clone https://gitee.com/wu_wei_shu/airfare-monitor.git
-cd airfare-monitor
-```
+## 运行边界
 
-GitHub 网络可用后也可以从 GitHub 克隆：
+- 所有启用航程使用一个独立浏览器严格串行查询，不并发放大访问量。
+- 每台设备最多同时启用 10 条航程，最短自动查询间隔为 30 分钟。
+- 不登录查询网站，不自动下单、预订或支付。
+- 不识别或绕过 CAPTCHA、设备验证和账号挑战。
+- 报价是查询时刻观察到的结果，最终价格、税费、库存和行李规则以平台或航司确认结果为准。
+
+## 开发者运行
+
+需要 Python 3.11+，推荐 Python 3.12。
 
 ```powershell
 git clone https://github.com/myitheart/airfare-monitor.git
 cd airfare-monitor
-```
-
-### 2. 创建虚拟环境并安装依赖
-
-```powershell
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install -e .
+.\.venv\Scripts\python.exe -m pip install -e ".[desktop,build]"
+.\.venv\Scripts\airfare-monitor-gui.exe
 ```
 
-如果没有 `py -3.12`，可换成已安装的 Python 3.11+：
+也可以从 Gitee 克隆：
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e .
+git clone https://gitee.com/wu_wei_shu/airfare-monitor.git
 ```
 
-### 3. 创建本地配置
+### 离线测试
 
 ```powershell
-Copy-Item config\routes.example.yaml config\routes.yaml
-Copy-Item config\settings.example.yaml config\settings.yaml
-Copy-Item .env.example .env
+.\.venv\Scripts\python.exe -m unittest discover -s tests -q
 ```
 
-这些真实配置已在 `.gitignore` 中，不要使用 `git add -f` 强制提交。
+离线测试不会访问去哪儿或同程，也不会发送真实邮件。
 
-## 二、配置待监控航程
+### 构建 Windows 安装包
 
-编辑 `config/routes.yaml`。每个 `legs` 项代表一个航程：
-
-```yaml
-legs:
-  - id: leg-1
-    enabled: true
-
-    origin_airport_iata: SHA
-    origin_name_zh: 上海
-    destination_airport_iata: KUL
-    destination_name_zh: 吉隆坡
-
-    departure_date: "2026-09-27"
-    etd_window:
-      start: "00:00"
-      end: "23:59"
-
-    direct_only: true
-    expected_total_price_cny: 1000
-    top_n: 10
-
-    adult_count: 1
-    child_count: 0
-    cabin_class: economy
-    market: auto
-
-    # 可选：在邮件中单独展示某个关注时刻的实时价格
-    preferred_schedules:
-      - label: 上海浦东 → 吉隆坡
-        departure_time: "07:25"
-        arrival_time: "13:00"
-        arrival_day_offset: 0
-        departure_tolerance_minutes: 60
-        arrival_tolerance_minutes: 60
-        origin_airport_iata: PVG
-        destination_airport_iata: KUL
-```
-
-`legs` 是非空列表，没有固定为 4 程。可以继续复制航程块并使用唯一的 `id` 添加 `leg-5`、`leg-6` 等，也可以用 `enabled: false` 临时停用某一程。邮件、Excel 和历史记录会根据本次实际启用的航程数量动态生成。
-
-### 航程字段说明
-
-| 字段 | 说明 |
-|---|---|
-| `id` | 稳定且不重复的航程编号，例如 `leg-1` |
-| `enabled` | `true` 表示启用，`false` 表示临时停用 |
-| `origin_airport_iata` | 起运地 IATA 三字码，例如 `SHA`、`PVG`、`KUL` |
-| `destination_airport_iata` | 目的地 IATA 三字码 |
-| `origin_name_zh` | 邮件和 Excel 显示的起运地中文名，可选但建议填写 |
-| `destination_name_zh` | 邮件和 Excel 显示的目的地中文名，可选但建议填写 |
-| `departure_date` | 出发日期，必须是 `YYYY-MM-DD` |
-| `etd_window.start/end` | 当地计划起飞时间窗，必须是 `HH:MM` |
-| `direct_only` | `true` 只保留直达，`false` 允许中转 |
-| `max_layover_minutes` | 可选；允许中转时，所有相邻航段等待时间总和的上限，如 `240` 表示 4 小时 |
-| `return_date` | 可选；填写后该项改为往返组合价监控，日期必须晚于去程 |
-| `return_etd_window.start/end` | 往返配置必填；返程当地起飞时间窗 |
-| `return_direct_only` | 可选；返程是否仅直达，默认沿用去程 `direct_only` |
-| `return_max_layover_minutes` | 可选；返程总中转等待上限，默认沿用去程上限 |
-| `expected_total_price_cny` | 心理价位，使用解析后的 CNY 含税总价比较；显式填 `null` 表示只观察、不触发低价命中 |
-| `top_n` | 每程最多保留多少个最低价行程 |
-| `adult_count` | 成人数量，至少为 1 |
-| `child_count` | 儿童数量，可以为 0 |
-| `cabin_class` | `economy`、`premium_economy`、`business` 或 `first` |
-| `market` | 可选，默认 `auto`；也可填写 `domestic` 或 `international` 强制选择来源 |
-| `preferred_schedules` | 可选关注时刻列表；邮件会在最低价 5 条之外优先展示匹配航班的实时含税价 |
-
-### 允许中转的配置
-
-```yaml
-direct_only: false
-max_layover_minutes: 240
-expected_total_price_cny: null
-```
-
-`max_layover_minutes` 统计整个行程所有中转等待时间的总和，不是总旅行时长。直达航班不受该上限影响。符合条件的直达和中转行程会合并按含税总价排序，取最低 `top_n` 条。邮件和 Excel 会标明中转次数、中转机场和总等待时间。
-
-### 往返合计价配置
-
-```yaml
-id: roundtrip-sha-kul
-origin_airport_iata: SHA
-destination_airport_iata: KUL
-departure_date: "2026-09-26"
-etd_window: {start: "06:00", end: "11:59"}
-direct_only: true
-return_date: "2026-10-03"
-return_etd_window: {start: "00:00", end: "23:59"}
-return_direct_only: true
-expected_total_price_cny: null
-```
-
-往返搜索的一条候选是一组不可拆分的“去程 + 返程 + 含税合计价”。排序、历史、心理价位和二次确认都使用响应中该组合的 `price.lowTotalPrice`，不会把两个单程查询的价格相加。往返合计价目前只支持去哪儿跨境/国际航线。
-
-### 国内/国际来源选择
-
-推荐保留：
-
-```yaml
-market: auto
-```
-
-程序使用随项目安装的 IATA 机场国家数据判断：两个机场都属于中国大陆（国家代码 `CN`）时使用同程，其余航线使用去哪儿。例如 `SHA-XMN` 自动走同程，`SHA-KUL` 自动走去哪儿。香港、澳门及跨境航线不会按中国大陆国内航线处理。
-
-如果使用的是机场数据集中不存在的城市聚合代码，程序会停止该程并提示显式选择，避免查错网站：
-
-```yaml
-market: domestic       # 强制使用同程
-# 或
-market: international  # 强制使用去哪儿
-```
-
-同程国内采集当前要求 `direct_only: true`。这是为了确保 `flight_signature` 具备完整航段身份；录制响应对经停/中转组合没有提供足够完整的逐段信息。
-
-同程列表页显示的“¥…起”是票面价，不是本项目用于告警的含税价。程序会把响应中的成人机场费和燃油费加入票面价后再排序、写入报表和比较心理价位。例如录制中的 `¥350起` 加 `¥120` 税费后，监控总价为 `¥470`。任一税费字段缺失时不会把该报价误记为含税价。
-
-每个 `preferred_schedules` 项使用以下字段：
-
-| 字段 | 说明 |
-|---|---|
-| `label` | 邮件中显示的自定义航线名称 |
-| `departure_time` | 精确计划起飞时间，格式 `HH:MM` |
-| `arrival_time` | 精确计划到达时间，格式 `HH:MM` |
-| `arrival_day_offset` | 到达日相对出发日的天数；当天为 `0`，次日为 `1` |
-| `departure_tolerance_minutes` | 允许实际起飞时间相对目标时刻提前或延后的分钟数，默认 `0` |
-| `arrival_tolerance_minutes` | 允许实际到达时间相对目标时刻提前或延后的分钟数，默认 `0` |
-| `origin_airport_iata` | 可选的实际起飞机场，用于在城市代码搜索结果中精确匹配机场 |
-| `destination_airport_iata` | 可选的实际到达机场 |
-
-关注航班先按实际机场筛选，再在配置的起飞和到达容差内选择与目标时刻总体最接近的行程；距离相同时优先较低总价。两个容差省略时均为 `0`，即精确到分钟匹配。即使关注航班没有进入最低价前 `top_n`，邮件仍会单独展示目标时刻、实际匹配时刻及实时价格；容差内没有匹配航班时会明确提示。配置中的关注时刻不会改变心理价位，也不会直接触发低价命中。
-
-全天监控可使用：
-
-```yaml
-etd_window:
-  start: "00:00"
-  end: "23:59"
-```
-
-限制早晨起飞可使用：
-
-```yaml
-etd_window:
-  start: "06:00"
-  end: "11:30"
-```
-
-时间窗也支持跨午夜，例如 `22:00-02:00`。
-
-注意：机场 IATA 和航司代码是不同字段。`PVG`、`KUL` 是地点代码，`MU`、`9C` 是航司代码，不要混用。去哪儿的城市联想可能覆盖同城多个实际机场，Excel 中保存的是接口返回的真实起降机场。
-
-## 三、配置刷新间隔和浏览器
-
-编辑 `config/settings.yaml`。
-
-### 调度配置
-
-```yaml
-schedule:
-  timezone: Asia/Shanghai
-  interval_minutes: 30
-  jitter_seconds: 120
-  prevent_overlapping_runs: true
-```
-
-- `interval_minutes`：采集间隔，必须是正整数。修改为 `10` 即约每 10 分钟运行一次。
-- `jitter_seconds`：每轮额外增加的随机延迟上限。设置为 `0` 表示不增加随机延迟。
-- `prevent_overlapping_runs`：保留为 `true`。程序还会使用进程锁，防止启动第二个守护任务。
-- 配置修改后需要停止并重新启动 `daemon` 才会生效。
-
-### 浏览器配置
-
-```yaml
-browser:
-  engine: drissionpage
-  headless: false
-  user_data_path: data/browser-profile
-  local_port: 9333
-  page_load_timeout_seconds: 45
-  search_completion_timeout_seconds: 75
-  restart_after_consecutive_failures: 2
-  search_url_template: "https://flight.qunar.com/site/oneway_list_inter.htm"
-  roundtrip_search_url_template: "https://flight.qunar.com/site/interroundtrip_compare.htm?fromCity={origin_name}&toCity={destination_name}&fromDate={date}&toDate={return_date}&fromCode={origin}&toCode={destination}&from=flight_dom_search&lowestPrice=null&isInter=true&favoriteKey=&showTotalPr=null&adultNum={adult_count}&childNum={child_count}&cabinClass={cabin_class}"
-  tongcheng_search_url_template: "https://www.ly.com/flights/itinerary/oneway/{origin}-{destination}?date={date}&from={origin_name}&to={destination_name}&fromairport=&toairport=&p=&childticket=0,0"
-```
-
-- `headless: false` 会显示浏览器窗口，首次部署和排查问题时建议保持此设置。
-- `user_data_path` 必须指向项目独立 Profile，不要改成日常 Chrome Profile。
-- `local_port` 被占用时可换成其他未使用端口，例如 `9444`。
-- `search_completion_timeout_seconds` 是等待最终完整响应的最长时间。
-- `search_url_template` 是去哪儿国际单程页面。
-- `roundtrip_search_url_template` 是去哪儿国际往返结果页模板；保留样例中的全部占位符。
-- `tongcheng_search_url_template` 是同程结果页入口，用于加载录制中验证过的国内搜索表单；不要删除其中的占位符。
-
-### 低价二次确认
-
-```yaml
-collection:
-  source: auto
-  currency: CNY
-  sort_by: total_price
-  require_completed_response: true
-  secondary_confirmation_delay_seconds: 120
-```
-
-当最低含税总价达到心理价位时，程序默认等待约 120 秒重新查询命中航程。第二次仍命中才使用 `[低价命中]` 主题。
-
-## 四、配置 SMTP 邮件
-
-### 邮件服务器设置
-
-在 `config/settings.yaml` 中配置非敏感 SMTP 参数：
-
-```yaml
-mail:
-  enabled: true
-  smtp_host: smtp.example.com
-  smtp_port: 465
-  security: ssl
-  username_env: SMTP_USERNAME
-  password_env: SMTP_PASSWORD
-  sender_env: SMTP_SENDER
-  recipients_env: SMTP_RECIPIENTS
-  attach_excel: true
-  normal_subject_prefix: "[航价监控]"
-  threshold_subject_prefix: "[低价命中]"
-```
-
-- 端口 `465` 通常配合 `security: ssl`。
-- 使用 STARTTLS 的服务通常需要相应端口并设置 `security: starttls`。
-- `mail.enabled: false` 可关闭真实邮件发送。
-
-### 邮箱地址与授权码
-
-编辑项目根目录的 `.env`：
-
-```dotenv
-SMTP_USERNAME=your-account@example.com
-SMTP_PASSWORD=your-smtp-app-password
-SMTP_SENDER=your-account@example.com
-SMTP_RECIPIENTS=recipient@example.com
-```
-
-多个收件地址使用英文逗号分隔：
-
-```dotenv
-SMTP_RECIPIENTS=first@example.com,second@example.com
-```
-
-`.env` 只适合个人设备上的本地使用。不要把 SMTP 登录密码填入 `settings.example.yaml`、README、测试或任何被 Git 跟踪的文件。共享设备或长期部署建议改用操作系统环境变量；同名系统环境变量优先于 `.env`。
-
-## 五、校验和手动测试
-
-以下命令都在项目根目录执行。
-
-### 1. 仅校验配置
+安装 Inno Setup 7 后执行：
 
 ```powershell
-.\.venv\Scripts\airfare-monitor.exe validate
+.\.venv\Scripts\python.exe packaging\build_release.py
 ```
 
-该命令不会启动浏览器、访问查询网站或发送邮件。成功时会输出启用航程数量。
+构建脚本会执行打包 UI 烟测，然后生成安装器和 SHA-256 文件。私有收款码应只放在被 Git 忽略的 `private-assets/support/` 目录中；没有这些资源时仍可正常构建，只是不显示支持入口。
 
-### 2. 运行离线测试
-
-```powershell
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
-```
-
-离线测试不会访问去哪儿或同程，也不会发送邮件。
-
-### 3. 采集一次但不发邮件
-
-```powershell
-.\.venv\Scripts\airfare-monitor.exe run-once
-```
-
-该命令会根据各程自动访问去哪儿或同程、写入 SQLite 并生成 Excel，但不会发送邮件。
-
-### 4. 完整运行一次并发送邮件
-
-```powershell
-.\.venv\Scripts\airfare-monitor.exe run-once --send-mail
-```
-
-该命令适合首次部署后的全链路验证。需要同时满足：
-
-- `mail.enabled: true`；
-- `.env` 或操作系统中包含四个 SMTP 环境变量；
-- SMTP 主机、端口和安全方式正确。
-
-## 六、开启持续监控
-
-前台启动：
-
-```powershell
-cd D:\path\to\airfare-monitor
-.\.venv\Scripts\airfare-monitor.exe daemon
-```
-
-行为说明：
-
-1. 启动后立即运行一次。
-2. 所有启用航程串行采集，等待各程最终完整响应。
-3. 生成 Excel，并在 `mail.enabled: true` 时发送合并邮件。
-4. 等待配置的间隔和随机抖动后继续下一轮。
-5. 浏览器在守护进程生命周期内保持运行，仅在连续失败达到阈值时重启。
-
-保持 PowerShell 窗口开启。按 `Ctrl+C` 停止监控。修改航程、刷新间隔或 SMTP 配置后，也应先按 `Ctrl+C` 停止，再重新执行 `daemon`。
-
-### 后台启动（可选）
-
-首次部署建议先前台运行并确认邮件正常。验证后可在 PowerShell 中隐藏窗口启动，并把输出保存到日志：
-
-```powershell
-New-Item -ItemType Directory -Force logs | Out-Null
-Start-Process `
-  -FilePath ".\.venv\Scripts\airfare-monitor.exe" `
-  -ArgumentList "daemon" `
-  -WorkingDirectory (Get-Location) `
-  -WindowStyle Hidden `
-  -RedirectStandardOutput "logs\monitor.stdout.log" `
-  -RedirectStandardError "logs\monitor.stderr.log"
-```
-
-需要开机自动运行时，可在 Windows 任务计划程序中创建“登录时”任务，程序指向虚拟环境中的 `airfare-monitor.exe`，参数填写 `daemon`，起始目录填写项目根目录。不要同时手工再启动一个 `daemon`。
-
-## 七、输出和数据位置
-
-### Excel
-
-默认输出到 `outputs/`，文件名为：
+## 项目结构
 
 ```text
-airfare-monitor_YYYYMMDD_HHMM.xlsx
+airfare-monitor/
+├── docs/                         产品、开发、UI 和发布文档
+├── packaging/                    PyInstaller 与 Inno Setup 配置
+├── resources/                    可公开打包资源和默认配置
+├── src/airfare_monitor/          采集核心、桌面适配和 PySide6 UI
+├── tests/                        离线测试
+├── data/ logs/ outputs/          开发环境运行目录（Git 忽略）
+└── private-assets/               私有打包资源（Git 忽略）
 ```
 
-工作簿包含：
+## 相关文档
 
-- `本次汇总`：每项显示单程/往返类型、去返日期与时间窗、心理价位、最低价、变化和采集状态。
-- `航程1`～`航程N`：保存最低价候选；往返项同时展示去程和返程的航班号、时间、中转机场及合计价。
-- `24小时历史`：各程每次采集的最低总价。
+- [产品需求文档](docs/EXE_DEMO_PRODUCT_REQUIREMENTS.md)
+- [桌面开发手册](docs/EXE_DEMO_DEVELOPMENT_GUIDE.md)
+- [UI 设计与页面映射](docs/ui-design/README.md)
+- [数据模型](docs/DATA_MODEL.md)
+- [邮件与 Excel 说明](docs/EMAIL_AND_EXCEL.md)
+- [R4 安装与稳定性说明](docs/R4_RELEASE_NOTES.md)
 
-### SQLite
+## 安全与隐私
 
-默认数据库：
-
-```text
-data/airfare-monitor.sqlite3
-```
-
-包含运行状态、每程结果、航班快照和短期原始响应。不要在监控运行时手工修改数据库。
-
-关注时段价格会单独保存在 `preferred_schedule_prices` 表中，用于计算首次监控价和最近一次价格。已有数据库会在下次启动时自动创建该表，不需要删除或重建数据库。
-
-### 浏览器 Profile
-
-默认位置：
-
-```text
-data/browser-profile/
-```
-
-这是监控专用的独立 Profile。不要替换成用户日常 Chrome Profile，也不要把其中的 Cookie 提交到 Git。
-
-## 八、邮件规则
-
-正常邮件主题：
-
-```text
-[航价监控] N程更新 | YYYY-MM-DD HH:mm
-```
-
-当全部配置都是往返时：`[航价监控] N组往返更新 | YYYY-MM-DD HH:mm`。
-
-确认命中心理价位时：
-
-```text
-[低价命中][命中数/N程] 上海（SHA） → 吉隆坡（KUL） ¥980 ≤ ¥1,000 | YYYY-MM-DD HH:mm
-```
-
-部分航程失败时，主题包含 `[部分失败]`。邮件正文使用“中文名（IATA）”显示航程，并优先展示独立的“重点关注时段价格”卡片，包括目标/实际时刻、本次价、首次监控价、较首次变化、上次价、较上次变化和余票提示；最低价候选区域排在其后，最多展示 5 条。即使没有配置关注时段，每条最低价候选也会按照完整航班签名显示本次价格、首次出现价格、较首次变化、上次价格和较上次变化。往返组合会分别显示整体、去程和返程余票提示，例如 `余票：整体 2张（票少） · 去程 9张或以上（平台提示） · 返程 2张（票少）`。去哪儿返回的 `9` 通常是库存提示上限，因此程序显示为“9张或以上（平台提示）”，不把它当作精确库存。价格和库存仍需在 App 中最终确认。
-
-“首次监控价”是该关注目标第一次成功匹配到航班时的含税费总价；未匹配的运行不会建立或覆盖基准。修改容差不会重置首次价，修改出发日期、目标起降时间或实际机场会视为新的关注目标并重新建立首次价。该历史从启用此功能后的第一次成功采集开始，不会从旧的最低价快照中推测补录。
-
-同程国内航班在邮件的本次最低价、最低价备选和重点关注时段中同时显示价格拆分，例如：`票面 ¥350 + 机建燃油 ¥120 = 预计支付 ¥470`。心理价位、首次价、上次价和价格变化仍统一使用预计支付总价计算。
-
-## 九、常见问题
-
-### `validate` 提示配置不存在
-
-确认已经复制两个样例文件：
-
-```powershell
-Copy-Item config\routes.example.yaml config\routes.yaml
-Copy-Item config\settings.example.yaml config\settings.yaml
-```
-
-### 机场代码没有联想项
-
-- 检查是否误填了航司代码。
-- 确认代码是去哪儿页面可识别的 IATA 地点代码。
-- 手工打开去哪儿国际机票页面，确认该地点能正常搜索。
-
-去哪儿通过页面联想项确认地点，不会自行构造 Bella；同程让结果页自行发起查询，不会重放录制包里的 Cookie、Token 或接口请求。
-
-### 一直等待完整响应或超时
-
-- 确认网络能够正常访问该航程选择的来源网站。
-- 保持 `headless: false`，观察是否出现验证码或设备验证。
-- 适当提高 `search_completion_timeout_seconds`。
-- 去哪儿必须等到 `completed == true`；同程必须收到 `dataflag == all` 且航线日期一致的成功响应。
-- 不完整响应不会被保存为成功，也不会触发低价提醒。
-
-### 出现验证码或设备验证
-
-程序会停止当前航程并标记需要人工处理，不会自动破解。可关闭监控、在独立浏览器中人工确认页面状态，然后重新运行。
-
-### 浏览器端口被占用
-
-修改 `config/settings.yaml`：
-
-```yaml
-browser:
-  local_port: 9444
-```
-
-确保没有两个监控进程使用相同端口和 Profile。
-
-### SMTP 登录失败
-
-- 确认使用的是 SMTP 授权码，不是网页登录密码。
-- 检查主机、端口和 `ssl/starttls` 配置。
-- 确认 `.env` 中没有多余引号或空格。
-- 先执行 `validate`，再使用 `run-once --send-mail` 做全链路测试。
-
-### 邮件没有发送
-
-确认：
-
-```yaml
-mail:
-  enabled: true
-```
-
-`run-once` 默认不发邮件，单次测试必须显式添加 `--send-mail`。`daemon` 会在邮件启用时自动发送。
-
-### 修改配置后没有生效
-
-运行中的进程不会热加载配置。按 `Ctrl+C` 停止后重新执行 `daemon`。
-
-## 十、更新代码
-
-真实配置和运行数据均被 Git 忽略，正常拉取代码不会覆盖它们：
-
-```powershell
-git pull
-.\.venv\Scripts\python.exe -m pip install -e .
-.\.venv\Scripts\airfare-monitor.exe validate
-```
-
-依赖或源码更新后，先停止旧的 `daemon`，重新安装并校验，再重新启动。
-
-## 安全边界
-
-- 不在 Git 中保存 SMTP 密码、Cookie、浏览器 Token 或个人邮箱配置。
-- 不使用用户日常浏览器 Profile。
-- 不实现登录、下单、支付、验证码绕过或设备挑战绕过。
-- 测试默认只使用本地模拟响应；录制包中的 Cookie/Token 不会重放；真实采集和真实邮件由用户通过运行命令明确触发。
-- 报价是采集时的页面结果，最终价格、税费、库存和行李规则以 App 或航司确认结果为准。
+- 不在 Git 中保存 SMTP 密码、授权码、Cookie、浏览器 Token、个人邮箱或私人收款码。
+- 独立浏览器 Profile、SQLite、日志和 Excel 都保存在用户目录，不随源码上传。
+- 诊断包只包含脱敏运行摘要和日志片段，不包含配置、数据库、原始响应、浏览器 Profile 或凭据。
+- 真实网站查询和真实邮件发送不会由离线测试或构建脚本触发。
