@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
+    QToolTip,
     QVBoxLayout,
     QWidget,
 )
@@ -34,12 +35,57 @@ class PriceChart(QWidget):
         super().__init__()
         self.rows: list[dict[str, object]] = []
         self.threshold: Decimal | None = None
+        self._hit_points: list[tuple[int, QPointF, dict[str, object], Decimal | None]] = []
+        self._hovered_index: int | None = None
+        self.setMouseTracking(True)
         self.setMinimumHeight(310)
 
     def set_series(self, rows: list[dict[str, object]], threshold: Decimal | None) -> None:
         self.rows = list(rows)
         self.threshold = threshold
+        self._hit_points = []
+        self._hovered_index = None
+        QToolTip.hideText()
         self.update()
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802 - Qt API
+        hit = self._nearest_hit(event.position())
+        if hit is None:
+            if self._hovered_index is not None:
+                self._hovered_index = None
+                QToolTip.hideText()
+                self.update()
+            return
+
+        index, _, row, value = hit
+        if self._hovered_index != index:
+            self._hovered_index = index
+            QToolTip.showText(
+                event.globalPosition().toPoint(),
+                _chart_tooltip_text(row, value),
+                self,
+                self.rect(),
+                30_000,
+            )
+            self.update()
+
+    def leaveEvent(self, event) -> None:  # noqa: N802 - Qt API
+        self._hovered_index = None
+        QToolTip.hideText()
+        self.update()
+        super().leaveEvent(event)
+
+    def _nearest_hit(
+        self, position: QPointF, *, radius: float = 10.0,
+    ) -> tuple[int, QPointF, dict[str, object], Decimal | None] | None:
+        candidates = [
+            (point.x() - position.x()) ** 2 + (point.y() - position.y()) ** 2
+            for _, point, _, _ in self._hit_points
+        ]
+        if not candidates:
+            return None
+        nearest = min(range(len(candidates)), key=candidates.__getitem__)
+        return self._hit_points[nearest] if candidates[nearest] <= radius * radius else None
 
     def paintEvent(self, event) -> None:  # noqa: N802 - Qt API
         painter = QPainter(self)
@@ -84,6 +130,8 @@ class PriceChart(QWidget):
             y = area.bottom() - float((value - low) / span) * area.height()
             return QPointF(x, y)
 
+        self._hit_points = []
+
         if self.threshold is not None:
             threshold_y = point(0, self.threshold).y()
             painter.setPen(QPen(QColor("#ee8a15"), 1.5, Qt.PenStyle.DashLine))
@@ -118,15 +166,21 @@ class PriceChart(QWidget):
             painter.drawPath(path)
             for index, value in segment:
                 current = point(index, value)
+                self._hit_points.append((index, current, self.rows[index], value))
+                painter.setPen(QPen(QColor("#176fe4"), 3))
                 painter.setBrush(QColor("#ffffff"))
-                painter.drawEllipse(current, 4, 4)
+                radius = 6 if index == self._hovered_index else 4
+                painter.drawEllipse(current, radius, radius)
 
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor("#e14c4c"))
         for index, row in enumerate(self.rows):
             if str(row.get("status")) != "success" or _decimal(row.get("minimum_total_price_cny")) is None:
                 x = point(index, low).x()
-                painter.drawEllipse(QPointF(x, area.bottom()), 4.5, 4.5)
+                current = QPointF(x, area.bottom())
+                self._hit_points.append((index, current, row, None))
+                radius = 6 if index == self._hovered_index else 4.5
+                painter.drawEllipse(current, radius, radius)
 
         first_time = _datetime(self.rows[0].get("captured_at")) if self.rows else None
         last_time = _datetime(self.rows[-1].get("captured_at")) if self.rows else None
@@ -416,3 +470,11 @@ def _history_status(status: str) -> str:
         "manual_attention": "需要人工处理",
         "success": "无符合条件航班",
     }.get(status, "未取得价格")
+
+
+def _chart_tooltip_text(row: dict[str, object], value: Decimal | None) -> str:
+    captured = _datetime(row.get("captured_at"))
+    captured_text = captured.strftime("%Y-%m-%d %H:%M:%S") if captured else "时间未知"
+    if str(row.get("status")) == "success" and value is not None:
+        return f"采集时间：{captured_text}\n含税总价：{_price(value)}"
+    return f"采集时间：{captured_text}\n查询结果：{_history_status(str(row.get('status')))}"
