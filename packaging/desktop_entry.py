@@ -17,7 +17,7 @@ _GUI_PROGRAM = "AirfareMonitor"
 # 真子命令按“任意位置命中”分流，使 `--user-root X validate` 这类
 # 旗标在前的合法顺序也进入 CLI（试用验收 F1）。
 _CLI_HELP_FLAGS = {"-h", "--help"}
-_CLI_COMMANDS = {"cli", "validate", "run-once", "daemon", "open"}
+_CLI_COMMANDS = {"cli", "validate", "run-once", "daemon", "open", "price", "history", "routes", "status", "doctor"}
 _CLI_FLAGS = ("--routes", "--settings", "--log-level")
 
 

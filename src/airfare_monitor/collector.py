@@ -100,6 +100,29 @@ def _response_body(packet: Any) -> dict[str, Any] | None:
     return None
 
 
+_GRACEFUL_CHROMIUM_CACHE: dict[type, type] = {}
+
+
+def _graceful_chromium_cls(chromium_cls: type) -> type:
+    """返回把强杀降级为优雅关闭的 Chromium 子类（按基类缓存）。"""
+    cached = _GRACEFUL_CHROMIUM_CACHE.get(chromium_cls)
+    if cached is None:
+
+        def quit(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+            force = kwargs.get("force") if "force" in kwargs else (args[1] if len(args) >= 2 else False)
+            if force:
+                logger.warning("拦截浏览器强杀请求，改为优雅关闭（headless 状态不一致的复用场景）")
+                if "force" in kwargs:
+                    kwargs["force"] = False
+                elif len(args) >= 2:
+                    args = args[:1] + (False,) + args[2:]
+            return chromium_cls.quit(self, *args, **kwargs)
+
+        cached = type("GracefulChromium", (chromium_cls,), {"quit": quit})
+        _GRACEFUL_CHROMIUM_CACHE[chromium_cls] = cached
+    return cached
+
+
 class QunarBrowserSession:
     """Own one Chromium instance and select Qunar or Tongcheng per route."""
 
@@ -123,7 +146,10 @@ class QunarBrowserSession:
         options.set_local_port(self.settings.local_port)
         options.set_user_data_path(str(self.settings.user_data_path))
         options.headless(self.settings.headless)
-        self.browser = Chromium(addr_or_opts=options)
+        # 复用分支雷：DrissionPage 在「端口上已有浏览器且 headless 状态不一致」时
+        # 会 quit(3, True) 走 psutil 强杀 Chrome（macOS App Management 一级触发器）。
+        # 子类把任何 force 关闭降级为优雅关闭（CDP Browser.close）。
+        self.browser = _graceful_chromium_cls(Chromium)(addr_or_opts=options)
         self.tab = self.browser.latest_tab
         self.tab.set.timeouts(
             base=self.settings.search_completion_timeout_seconds,

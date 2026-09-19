@@ -255,7 +255,13 @@ class MonitorCoordinator:
             if leg is None:
                 raise ValueError("受影响航程已不存在")
             settings = load_settings(self.paths.settings_path, project_root=self.paths.user_root)
-            session = QunarBrowserSession(replace(settings.browser, headless=False))
+            # 人工确认浏览器与采集浏览器共用隔离 Profile（在同一 Profile 上完成
+            # 验证码才能真正解除自动化侧的拦截），但使用相邻端口：共用端口时，
+            # 用户正在解验证码的可见窗口会与下一轮无头采集产生 headless 状态
+            # 冲突，触发 DrissionPage 的浏览器强杀/关闭路径。
+            session = QunarBrowserSession(
+                replace(settings.browser, headless=False, local_port=settings.browser.local_port + 1)
+            )
             session.start()
             assert session.tab is not None
             if resolve_market(leg) == "domestic":
