@@ -65,9 +65,33 @@ def smoke_test(app: Path) -> None:
             raise RuntimeError(f"打包后的 Qt UI 烟测失败：{payload}")
 
 
-def adhoc_sign(app: Path) -> None:
-    subprocess.run(["codesign", "--force", "--deep", "--sign", "-", str(app)], check=True)
+DEV_SIGNING_IDENTITY = "AirfareMonitor Local Dev"
+
+
+def _signing_identity() -> str:
+    """优先使用本机自签名开发证书（稳定身份 → TCC 隐私授权跨构建保留）。
+
+    证书由 packaging/make_signing_identity.sh 一次性生成并导入登录钥匙串；
+    缺失时回退 ad-hoc（每次构建身份不同，隐私授权会反复重弹）。
+    """
+    result = subprocess.run(
+        ["security", "find-certificate", "-c", DEV_SIGNING_IDENTITY],
+        capture_output=True, text=True,
+    )
+    return DEV_SIGNING_IDENTITY if result.returncode == 0 else "-"
+
+
+def sign_app(app: Path) -> None:
+    identity = _signing_identity()
+    subprocess.run(["codesign", "--force", "--deep", "--sign", identity, str(app)], check=True)
     subprocess.run(["codesign", "--verify", "--deep", "--strict", str(app)], check=True)
+    requirement = subprocess.run(
+        ["codesign", "--display", "-r-", str(app)], capture_output=True, text=True,
+    )
+    print(f"签名身份：{identity}")
+    for line in requirement.stdout.splitlines():
+        if line.startswith("designated"):
+            print(line.strip())
 
 
 def include_agent_instructions(app: Path) -> None:
@@ -101,7 +125,7 @@ def build_release() -> Path:
     app = build_app(version)
     smoke_test(app)
     include_agent_instructions(app)
-    adhoc_sign(app)
+    sign_app(app)
     output_root = ROOT / "release" / f"v{version}-mac"
     installer = build_dmg(app, version, output_root)
     checksum = output_root / f"{installer.name}.sha256"

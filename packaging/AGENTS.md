@@ -45,7 +45,7 @@
 ## 注意事项
 
 - 不要修改 .app 内部内容；不要使用 sudo（除非用户明确要求装进 `/usr/local/bin`）。
-- 从浏览器下载的 DMG 安装包为 ad-hoc 签名，首次打开可能被 Gatekeeper 拦截：
+- 安装包使用本机自签名证书（未经 Apple 公证）。首次打开可能被 Gatekeeper 拦截：
   引导用户右键 → 打开，或在征得同意后执行
   `xattr -dr com.apple.quarantine /Applications/AirfareMonitor.app`。
 - `daemon` 或 GUI 报「已有监控进程持有运行锁」属预期互斥，不是故障。
