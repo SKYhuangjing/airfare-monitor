@@ -40,7 +40,33 @@
 | `validate` | 校验配置，不启动浏览器 |
 | `run-once` | 采集一轮并生成 Excel（`--send-mail` 才发邮件） |
 | `daemon` | 按配置间隔常驻轮询并发邮件 |
+| `price [--leg ID] [--last N]` | 各航程最近价格与涨跌 |
+| `history [--leg ID] [--hours N]` | 价格历史明细 |
+| `routes list/add/edit/show/remove/enable/disable` | 航程全生命周期管理 |
+| `status` | 调度锁/最近轮次/各航程最新价 |
+| `doctor` | 环境自检（配置/浏览器/数据库/签名身份） |
+| `open [ID]` | 用默认浏览器打开来源网站同口径搜索页 |
 | `--user-root <dir>` | 指定独立数据根（测试/隔离用，缺省与 GUI 共享） |
+| `--json` | 全局旗标：机器可读输出（routes/price 等），供脚本/AI 消费 |
+
+## 自然语言 → 命令对照（AI Cookbook）
+
+用户说一句话时，映射到命令执行（先 `routes list` / `status` 摸清现状，再动手）：
+
+| 用户意图 | 命令 |
+|---|---|
+| 「看下现在什么价」 | `airfare-monitor price` |
+| 「上海飞大阪最近趋势」 | `airfare-monitor history --hours 48` |
+| 「加一条 11 月 26 上海到大阪、往返 12 月 1 回、1500 以下提醒我」 | `airfare-monitor routes add --from 上海 --to 大阪 --date 2026-11-26 --return 2026-12-01 --threshold 1500` |
+| 「那条航线只看浦东出发」 | `airfare-monitor routes edit <ID> --from PVG` |
+| 「帮我盯早上的直飞班次」 | `airfare-monitor routes edit <ID> --preferred "早班直飞,08:00,12:00,30" --etd-start 06:00 --etd-end 12:00` |
+| 「先别监控大阪这条」 | `airfare-monitor routes disable <ID>` |
+| 「现在查一轮看看」 | `airfare-monitor run-once` |
+| 「程序健康吗」 | `airfare-monitor doctor` + `airfare-monitor status` |
+
+要点：`--from/--to` 接受 IATA 码、城市码或中文名；裸城市名（如"上海"）= 同城全部机场聚合比价，
+传 `PVG` 这类机场码 = 单机场精确；歧义时报错会列出候选供你改写。所有变更下一轮自动生效
+（GUI 与 daemon 每轮重读配置），改完用 `routes show <ID>` 核对、`validate` 兜底校验。
 
 ## 注意事项
 

@@ -27,6 +27,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--routes", help="航程配置；缺省 <数据根>/config/routes.yaml")
     parser.add_argument("--settings", help="运行配置；缺省 <数据根>/config/settings.yaml")
     parser.add_argument("--log-level", default="INFO", choices=("DEBUG", "INFO", "WARNING", "ERROR"))
+    parser.add_argument("--json", action="store_true", help="以 JSON 输出（供 AI 代理/脚本消费）")
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("validate", help="仅校验配置，不启动浏览器")
     once = subparsers.add_parser("run-once", help="采集一次并生成 Excel")
@@ -40,16 +41,41 @@ def _parser() -> argparse.ArgumentParser:
     history = subparsers.add_parser("history", help="查看价格历史明细")
     history.add_argument("--leg", help="只看指定航程 ID")
     history.add_argument("--hours", type=int, default=24, help="回溯小时数（默认 24）")
-    routes_parser = subparsers.add_parser("routes", help="航程管理（列表/启停）")
+    routes_parser = subparsers.add_parser("routes", help="航程管理（新增/编辑/启停/删除）")
     routes_sub = routes_parser.add_subparsers(dest="routes_command", required=True)
     routes_sub.add_parser("list", help="列出全部航程")
+    _add_leg_flags(routes_sub.add_parser("add", help="新增航程（AI 友好：支持机场/城市名或 IATA）"))
+    edit_cmd = routes_sub.add_parser("edit", help="编辑航程（只改传入的参数）")
+    edit_cmd.add_argument("route_id", help="航程 ID")
+    _add_leg_flags(edit_cmd)
+    show_cmd = routes_sub.add_parser("show", help="查看航程完整配置")
+    show_cmd.add_argument("route_id", help="航程 ID")
     enable_cmd = routes_sub.add_parser("enable", help="启用航程（下一轮生效）")
     enable_cmd.add_argument("route_id", help="航程 ID")
     disable_cmd = routes_sub.add_parser("disable", help="停用航程（下一轮生效）")
     disable_cmd.add_argument("route_id", help="航程 ID")
+    remove_cmd = routes_sub.add_parser("remove", help="删除航程")
+    remove_cmd.add_argument("route_id", help="航程 ID")
     subparsers.add_parser("status", help="运行状态总览（锁/最近轮次/各航程最新价）")
     subparsers.add_parser("doctor", help="环境自检（配置/浏览器/数据库/签名身份）")
     return parser
+
+
+def _add_leg_flags(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--from", dest="origin", help="出发地：IATA 码 / 城市码（如 SHA=上海全部机场）/ 中文名")
+    parser.add_argument("--to", dest="destination", help="目的地：IATA 码 / 城市码 / 中文名")
+    parser.add_argument("--date", dest="departure_date", help="出发日期 YYYY-MM-DD")
+    parser.add_argument("--return", dest="return_date", help="返程日期 YYYY-MM-DD；传空字符串清除")
+    parser.add_argument("--etd-start", help="出发时段起点 HH:MM（需与 --etd-end 成对）")
+    parser.add_argument("--etd-end", help="出发时段终点 HH:MM")
+    parser.add_argument("--direct-only", dest="direct_only", action="store_true", default=None, help="仅直达（默认开）")
+    parser.add_argument("--allow-transfer", dest="direct_only", action="store_false", help="允许中转")
+    parser.add_argument("--threshold", help="心理价位（CNY 含税总价；传空字符串清除）")
+    parser.add_argument("--adults", type=int, help="成人数（默认 1）")
+    parser.add_argument("--children", type=int, help="儿童数（默认 0）")
+    parser.add_argument("--cabin", help="舱位（economy/business/first，默认 economy）")
+    parser.add_argument("--preferred", action="append", help="重点班次，可多次：标签,HH:MM,HH:MM[,容差分钟]")
+    parser.add_argument("--id", dest="route_id", help="航程 ID（缺省自动生成）")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -63,6 +89,10 @@ def main(argv: list[str] | None = None) -> int:
     except ConfigError as exc:
         # 配置类错误打印单行中文提示，不抛裸 traceback（试用验收 F2）。
         print(f"配置错误：{exc}", file=sys.stderr)
+        return 2
+    except ValueError as exc:
+        # 航程构造类的参数错误（机场解析/时段/金额等），单行提示便于 AI 自纠。
+        print(f"参数错误：{exc}", file=sys.stderr)
         return 2
 
 
@@ -106,7 +136,12 @@ def _dispatch(args: argparse.Namespace) -> int:
         return _history_command(settings, legs, leg_id=args.leg, hours=args.hours)
 
     if args.command == "routes":
-        return _routes_command(routes_path, legs, args.routes_command, getattr(args, "route_id", None))
+        from .desktop_app.airport_catalog import AirportCatalog
+
+        catalog = AirportCatalog.load(paths.resource_root / "airports.zh.json")
+        return _routes_command(
+            routes_path, legs, args.routes_command, getattr(args, "route_id", None), args=args, catalog=catalog
+        )
 
     if args.command == "status":
         return _status_command(settings, legs, routes_path)
@@ -205,12 +240,32 @@ def _history_command(settings: AppSettings, legs: list[LegConfig], *, leg_id: st
     return 0
 
 
-def _routes_command(routes_path: Path, legs: list[LegConfig], command: str, route_id: str | None) -> int:
+def _routes_command(
+    routes_path: Path,
+    legs: list[LegConfig],
+    command: str,
+    route_id: str | None,
+    *,
+    args: argparse.Namespace | None = None,
+    catalog=None,
+) -> int:
+    import json as _json
+
     from .search_link import search_site_label
 
+    as_json = bool(getattr(args, "json", False)) if args is not None else False
+
+    def emit_json(payload: object) -> None:
+        print(_json.dumps(payload, ensure_ascii=False, indent=2))
+
     if command == "list":
+        if as_json:
+            from .route_builder import leg_to_summary
+
+            emit_json([leg_to_summary(leg) for leg in legs])
+            return 0
         if not legs:
-            print("还没有任何航程；用桌面客户端向导添加最方便。")
+            print("还没有任何航程；可用 routes add 新增，或用桌面客户端向导。")
             return 0
         for leg in legs:
             arrow = "⇄" if leg.is_round_trip else "→"
@@ -222,12 +277,81 @@ def _routes_command(routes_path: Path, legs: list[LegConfig], command: str, rout
             )
         return 0
 
+    if command in {"add", "edit"}:
+        from .route_builder import build_leg, leg_to_summary
+
+        existing = None
+        if command == "edit":
+            existing = next((item for item in legs if item.id == route_id), None)
+            if existing is None:
+                print(f"未找到航程：{route_id}（airfare-monitor routes list 查看全部 ID）")
+                return 1
+        elif route_id and any(item.id == route_id for item in legs):
+            print(f"航程 ID 已存在：{route_id}")
+            return 1
+        draft = build_leg(
+            catalog,
+            origin=getattr(args, "origin", None),
+            destination=getattr(args, "destination", None),
+            departure_date=getattr(args, "departure_date", None),
+            return_date=getattr(args, "return_date", None),
+            etd_start=getattr(args, "etd_start", None),
+            etd_end=getattr(args, "etd_end", None),
+            direct_only=getattr(args, "direct_only", None),
+            threshold=getattr(args, "threshold", None),
+            adults=getattr(args, "adults", None),
+            children=getattr(args, "children", None),
+            cabin=getattr(args, "cabin", None),
+            preferred=getattr(args, "preferred", None),
+            route_id=route_id,
+            existing=existing,
+            taken_ids={item.id for item in legs},
+        )
+        from .desktop_app.route_repository import RouteRepository
+
+        updated = [draft.leg if item.id == draft.leg.id else item for item in legs]
+        if command == "add":
+            updated = legs + [draft.leg]
+        RouteRepository(routes_path).save(updated)
+        if as_json:
+            emit_json({"saved": leg_to_summary(draft.leg), "notes": list(draft.notes)})
+        else:
+            action = "已新增" if command == "add" else "已更新"
+            print(f"{action}航程 {draft.leg.id}：")
+            for note in draft.notes:
+                print(f"  {note}")
+            print(f"  出发 {draft.leg.departure_date.isoformat()}"
+                  + (f" · 返程 {draft.leg.return_date.isoformat()}" if draft.leg.return_date else "")
+                  + f" · {'仅直达' if draft.leg.direct_only else '可中转'}"
+                  + (f" · 心理价位 ¥{draft.leg.expected_total_price_cny:,.0f}" if draft.leg.expected_total_price_cny else " · 仅观察"))
+            print("GUI 或 daemon 下一轮自动生效。")
+        return 0
+
+    if command == "show":
+        from .route_builder import leg_to_summary
+
+        leg = next((item for item in legs if item.id == route_id), None)
+        if leg is None:
+            print(f"未找到航程：{route_id}")
+            return 1
+        if as_json:
+            emit_json(leg_to_summary(leg))
+        else:
+            summary = leg_to_summary(leg)
+            for key, value in summary.items():
+                print(f"  {key}: {value}")
+        return 0
+
     from .desktop_app.route_repository import RouteRepository
 
     leg = next((item for item in legs if item.id == route_id), None)
     if leg is None:
         print(f"未找到航程：{route_id}（airfare-monitor routes list 查看全部 ID）")
         return 1
+    if command == "remove":
+        RouteRepository(routes_path).save([item for item in legs if item.id != route_id])
+        print(f"{route_id} 已删除（历史价格数据保留）；GUI 或 daemon 下一轮自动生效。")
+        return 0
     desired = command == "enable"
     if leg.enabled == desired:
         print(f"{route_id} 已经是{'启用' if desired else '暂停'}状态，无需修改。")
