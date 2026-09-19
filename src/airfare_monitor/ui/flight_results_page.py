@@ -32,11 +32,18 @@ from ..storage import SQLiteStore
 
 
 class FlightResultsPage(QWidget):
-    def __init__(self, store: SQLiteStore | None, *, on_back: Callable[[], None]):
+    def __init__(
+        self,
+        store: SQLiteStore | None,
+        *,
+        on_back: Callable[[], None],
+        on_open_search: Callable[[LegConfig], None] | None = None,
+    ):
         super().__init__()
         self.setObjectName("pageCanvas")
         self.store = store
         self.on_back = on_back
+        self.on_open_search = on_open_search
         self.route: LegConfig | None = None
         self.result: dict[str, object] | None = None
         self.candidates: list[dict[str, object]] = []
@@ -60,6 +67,12 @@ class FlightResultsPage(QWidget):
         title_row.addStretch()
         self.complete_badge = QLabel("完整响应", objectName="activePill")
         title_row.addWidget(self.complete_badge)
+        self.open_site_button = QPushButton("在来源网站打开", objectName="historyAction")
+        self.open_site_button.setToolTip("用默认浏览器打开与监控同口径的来源网站搜索结果页")
+        self.open_site_button.hide()
+        if self.on_open_search is not None:
+            self.open_site_button.clicked.connect(self._open_search)
+            title_row.addWidget(self.open_site_button)
         layout.addLayout(title_row)
 
         self.notice = QLabel(objectName="warningText", wordWrap=True)
@@ -156,6 +169,9 @@ class FlightResultsPage(QWidget):
     def show_route(self, route: LegConfig) -> None:
         self.route = route
         self.selected.clear()
+        if self.on_open_search is not None:
+            self.open_site_button.setText(f"在{'同程' if _market(route) == 'domestic' else '去哪儿'}打开")
+            self.open_site_button.show()
         arrow = "⇄" if route.return_date else "→"
         origin = route.origin_name_zh or route.origin_airport_iata
         destination = route.destination_name_zh or route.destination_airport_iata
@@ -178,6 +194,10 @@ class FlightResultsPage(QWidget):
         self._render_summary()
         self._render()
         self._update_compare_bar()
+
+    def _open_search(self) -> None:
+        if self.route is not None and self.on_open_search is not None:
+            self.on_open_search(self.route)
 
     def _render_summary(self) -> None:
         if not self.result:

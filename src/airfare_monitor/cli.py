@@ -8,7 +8,8 @@ from collections.abc import Callable
 from pathlib import Path
 
 from .app_paths import AppPaths
-from .config import load_local_env, load_routes, load_settings
+from .config import AppSettings, load_local_env, load_routes, load_settings
+from .models import LegConfig
 from .scheduler import run_forever
 from .service import MonitorService
 
@@ -26,6 +27,8 @@ def _parser() -> argparse.ArgumentParser:
     once = subparsers.add_parser("run-once", help="采集一次并生成 Excel")
     once.add_argument("--send-mail", action="store_true", help="按配置发送真实邮件")
     subparsers.add_parser("daemon", help="按配置间隔运行并发送邮件")
+    opener = subparsers.add_parser("open", help="在默认浏览器打开航程对应来源网站的搜索结果页")
+    opener.add_argument("route_id", nargs="?", help="航程 ID；缺省列出全部可选航程")
     return parser
 
 
@@ -59,8 +62,40 @@ def main(argv: list[str] | None = None) -> int:
         finally:
             service.close()
 
+    if args.command == "open":
+        return _open_route(legs, settings, args.route_id)
+
     lock_path = settings.storage.sqlite_path.parent / "airfare-monitor.lock"
     run_forever(_daemon_cycle_factory(routes_path, settings_path), lock_path)
+    return 0
+
+
+def _open_route(legs: list[LegConfig], settings: AppSettings, route_id: str | None) -> int:
+    import webbrowser
+
+    from .search_link import search_site_label, search_url_for
+
+    if route_id is None:
+        if not legs:
+            print("还没有任何航程；先用桌面客户端或编辑 routes.yaml 添加。")
+            return 0
+        print("可选航程（airfare-monitor open <ID>）：")
+        for leg in legs:
+            arrow = "⇄" if leg.is_round_trip else "→"
+            state = "启用" if leg.enabled else "暂停"
+            print(
+                f"  {leg.id:<24} {leg.origin_name_zh or leg.origin_airport_iata} {arrow} "
+                f"{leg.destination_name_zh or leg.destination_airport_iata}  "
+                f"{leg.departure_date.isoformat()}  {search_site_label(leg)}  {state}"
+            )
+        return 0
+    leg = next((item for item in legs if item.id == route_id), None)
+    if leg is None:
+        print(f"未找到航程：{route_id}（不带参数运行 airfare-monitor open 查看全部 ID）")
+        return 1
+    url = search_url_for(leg, settings)
+    print(f"{search_site_label(leg)}：{url}")
+    webbrowser.open(url)
     return 0
 
 

@@ -112,7 +112,7 @@ class DesktopR2Tests(unittest.TestCase):
             buttons = page.cards[0].findChildren(QPushButton)
             self.assertEqual(
                 {button.text() for button in buttons},
-                {"编辑", "暂停", "复制", "删除", "查看候选"},
+                {"编辑", "暂停", "复制", "删除", "查看候选", "在去哪儿打开"},
             )
             labels = {label.text() for label in page.cards[0].findChildren(QLabel)}
             self.assertIn("PVG", labels)

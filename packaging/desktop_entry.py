@@ -13,7 +13,7 @@ import os
 import sys
 
 _GUI_PROGRAM = "AirfareMonitor"
-_CLI_SUBCOMMANDS = {"cli", "validate", "run-once", "daemon", "-h", "--help"}
+_CLI_SUBCOMMANDS = {"cli", "validate", "run-once", "daemon", "open", "-h", "--help"}
 _CLI_FLAGS = ("--routes", "--settings", "--log-level")
 
 

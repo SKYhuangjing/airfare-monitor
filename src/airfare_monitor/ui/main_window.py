@@ -27,6 +27,7 @@ from ..desktop_app.mail_profile import MailProfileRepository
 from ..desktop_app.diagnostics import export_diagnostic_zip
 from ..desktop_app.view_data import load_dashboard_data
 from ..models import LegConfig
+from ..search_link import search_site_label
 from ..storage import SQLiteStore
 from .dashboard_page import DashboardPage, _icon_label, _plain_icon
 from .flight_results_page import FlightResultsPage
@@ -112,6 +113,7 @@ class MainWindow(QMainWindow):
         on_resume: Callable[[], bool | None] | None = None,
         on_retry_leg: Callable[[str], bool | None] | None = None,
         on_open_verification: Callable[[str], bool | None] | None = None,
+        on_open_search: Callable[[LegConfig], None] | None = None,
         history_store: SQLiteStore | None = None,
         outputs_dir: Path | None = None,
     ):
@@ -136,6 +138,7 @@ class MainWindow(QMainWindow):
         self.on_resume = on_resume
         self.on_retry_leg = on_retry_leg
         self.on_open_verification = on_open_verification
+        self.on_open_search = on_open_search
         self._paused = False
         self._build()
         self.controller.on_routes_changed(self.refresh_routes)
@@ -159,7 +162,9 @@ class MainWindow(QMainWindow):
             open_support=self._open_support if self._support_assets.available else None,
             support_prompt_state=self._support_prompt_state,
         )
-        self.routes_page = RoutesPage(self.controller, self.catalog, open_results=self._open_results)
+        self.routes_page = RoutesPage(
+            self.controller, self.catalog, open_results=self._open_results, on_open_search=self._open_search_link
+        )
         self.history = HistoryPage(
             self.history_store,
             open_latest_report=self.open_latest_report,
@@ -187,6 +192,7 @@ class MainWindow(QMainWindow):
         self.flight_results = FlightResultsPage(
             self.history_store,
             on_back=lambda: self._switch_page(1),
+            on_open_search=self._open_search_link,
         )
         self.system.settings_saved.connect(self.runtime_settings_saved.emit)
         for page in (
@@ -293,6 +299,10 @@ class MainWindow(QMainWindow):
     def _open_results(self, route: LegConfig) -> None:
         self.flight_results.show_route(route)
         self._switch_page(5)
+
+    def _open_search_link(self, route: LegConfig) -> None:
+        if self.on_open_search is not None:
+            self.on_open_search(route)
 
     def begin_first_route(self) -> None:
         self._switch_page(1)
@@ -475,11 +485,13 @@ class RoutesPage(QWidget):
         catalog: AirportCatalog,
         *,
         open_results: Callable[[LegConfig], None] | None = None,
+        on_open_search: Callable[[LegConfig], None] | None = None,
     ):
         super().__init__()
         self.controller = controller
         self.catalog = catalog
         self.open_results = open_results
+        self.on_open_search = on_open_search
         self.routes: list[LegConfig] = []
         self._runtime_status: dict[str, str] = {}
         self.cards: list[QFrame] = []
@@ -625,10 +637,17 @@ class RoutesPage(QWidget):
         edit.clicked.connect(lambda checked=False, item=route: self._edit(item))
         copy = QPushButton("复制", objectName="routeAction")
         copy.clicked.connect(lambda checked=False, item=route: self._copy(item))
+        open_site = QPushButton(f"在{search_site_label(route)}打开", objectName="routeAction")
+        open_site.setToolTip("用默认浏览器打开与监控同口径的来源网站搜索结果页")
+        if self.on_open_search is not None:
+            open_site.clicked.connect(lambda checked=False, item=route: self.on_open_search(item))
+        else:
+            open_site.setEnabled(False)
         delete = QPushButton("删除", objectName="dangerAction")
         delete.clicked.connect(lambda checked=False, item=route: self._delete(item))
         footer.addWidget(edit)
         footer.addWidget(copy)
+        footer.addWidget(open_site)
         footer.addStretch()
         footer.addWidget(delete)
         results = QPushButton("查看候选", objectName="routeResultAction")

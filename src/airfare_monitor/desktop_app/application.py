@@ -6,12 +6,15 @@ import sys
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import QTimer, Qt
-from PySide6.QtGui import QCursor, QGuiApplication
+from PySide6.QtCore import QUrl, QTimer, Qt
+from PySide6.QtGui import QCursor, QDesktopServices, QGuiApplication
 from PySide6.QtWidgets import QApplication, QDialog, QMenu, QMessageBox, QSystemTrayIcon
 import PySide6
 
 from ..app_paths import AppPaths
+from ..config import load_settings
+from ..models import LegConfig
+from ..search_link import search_url_for
 from ..storage import SQLiteStore
 from ..ui.app_icon import application_icon
 from ..ui.i18n import install_chinese_translations
@@ -136,6 +139,14 @@ def run_desktop(paths: AppPaths, *, start_hidden: bool = False) -> int:
             )
         return accepted
 
+    def open_search_link(route: LegConfig) -> None:
+        try:
+            settings = load_settings(paths.settings_path, project_root=paths.user_root)
+            QDesktopServices.openUrl(QUrl(search_url_for(route, settings)))
+        except Exception:
+            logger.exception("构造来源网站链接失败")
+            QMessageBox.warning(window, "无法打开来源网站", "构造搜索链接失败，请检查航程的机场与日期设置。")
+
     window = MainWindow(
         controller,
         catalog,
@@ -146,6 +157,7 @@ def run_desktop(paths: AppPaths, *, start_hidden: bool = False) -> int:
         on_resume=coordinator.resume,
         on_retry_leg=retry_if_ready,
         on_open_verification=open_verification_if_ready,
+        on_open_search=open_search_link,
         history_store=history_store,
         outputs_dir=paths.outputs_dir,
     )
