@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import argparse
 import logging
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
 from .app_paths import AppPaths
 from .config import AppSettings, load_local_env, load_routes, load_settings
+from .errors import ConfigError
 from .models import LegConfig
 from .scheduler import run_forever
 from .service import MonitorService
@@ -38,13 +40,24 @@ def main(argv: list[str] | None = None) -> int:
         level=getattr(logging, args.log_level),
         format="%(asctime)s %(levelname)s %(name)s - %(message)s",
     )
+    try:
+        return _dispatch(args)
+    except ConfigError as exc:
+        # 配置类错误打印单行中文提示，不抛裸 traceback（试用验收 F2）。
+        print(f"配置错误：{exc}", file=sys.stderr)
+        return 2
+
+
+def _dispatch(args: argparse.Namespace) -> int:
     paths = AppPaths.discover(user_root=args.user_root)
     load_local_env(Path.cwd() / ".env")
     routes_path = Path(args.routes) if args.routes else paths.routes_path
     settings_path = Path(args.settings) if args.settings else paths.settings_path
     # project_root 留空：settings.yaml 里的相对路径（data/、outputs/ 等）
     # 锚定到该配置文件所在的 <数据根>，与桌面客户端的解析口径一致。
-    legs = load_routes(routes_path)
+    # allow_empty 与桌面客户端对齐：0 条启用时 daemon 允许空转等待配置，
+    # run-once 会在执行期给出明确报错（试用验收 F3）。
+    legs = load_routes(routes_path, allow_empty=True)
     settings = load_settings(settings_path)
     if args.command == "validate":
         enabled = [leg for leg in legs if leg.enabled]
@@ -53,6 +66,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "run-once":
+        if not any(leg.enabled for leg in legs):
+            print("没有启用的航程；请先在配置或桌面客户端中启用至少一条。", file=sys.stderr)
+            return 2
         service = MonitorService(legs, settings)
         _attach_desktop_mail(service, settings_path)
         try:
@@ -103,7 +119,7 @@ def _daemon_cycle_factory(routes_path: Path, settings_path: Path) -> Callable[[]
     """每轮重读 routes/settings 构造 service，与桌面客户端热更新语义一致。"""
 
     def factory() -> MonitorService:
-        service = MonitorService(load_routes(routes_path), load_settings(settings_path))
+        service = MonitorService(load_routes(routes_path, allow_empty=True), load_settings(settings_path))
         _attach_desktop_mail(service, settings_path)
         return service
 
