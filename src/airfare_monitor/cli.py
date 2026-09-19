@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import argparse
 import logging
+from collections.abc import Callable
 from pathlib import Path
 
 from .app_paths import AppPaths
 from .config import load_local_env, load_routes, load_settings
 from .scheduler import run_forever
 from .service import MonitorService
+
+logger = logging.getLogger(__name__)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -46,13 +49,57 @@ def main(argv: list[str] | None = None) -> int:
         print(f"配置有效：{len(enabled)} 个启用行程，其中 {round_trips} 组往返")
         return 0
 
-    service = MonitorService(legs, settings)
     if args.command == "run-once":
+        service = MonitorService(legs, settings)
+        _attach_desktop_mail(service, settings_path)
         try:
             report, workbook = service.run_once(send_email=args.send_mail)
             print(f"运行完成：{report.status}；Excel：{workbook}")
             return 0
         finally:
             service.close()
-    run_forever(service, settings.storage.sqlite_path.parent / "airfare-monitor.lock")
+
+    lock_path = settings.storage.sqlite_path.parent / "airfare-monitor.lock"
+    run_forever(_daemon_cycle_factory(routes_path, settings_path), lock_path)
     return 0
+
+
+def _daemon_cycle_factory(routes_path: Path, settings_path: Path) -> Callable[[], MonitorService]:
+    """每轮重读 routes/settings 构造 service，与桌面客户端热更新语义一致。"""
+
+    def factory() -> MonitorService:
+        service = MonitorService(load_routes(routes_path), load_settings(settings_path))
+        _attach_desktop_mail(service, settings_path)
+        return service
+
+    return factory
+
+
+def _attach_desktop_mail(service: MonitorService, settings_path: Path) -> None:
+    """挂接与桌面客户端同源的邮件通道：desktop_mail（钥匙串授权码）优先。
+
+    未启用或读取失败时保持 mail_delivery 为空，run_once 会回退到
+    settings.mail 的环境变量通道（enabled=false 时静默跳过）。
+    """
+    from .desktop_app.credential_store import CredentialStore
+    from .desktop_app.mail_profile import MailProfileRepository
+    from .mail import send_report_with_credentials
+
+    try:
+        profile = MailProfileRepository(settings_path, user_root=settings_path.resolve().parent.parent).load()
+    except Exception as exc:
+        logger.warning("读取桌面邮件配置失败，本轮回退环境变量邮件通道：%s", exc)
+        return
+    if not profile.enabled:
+        return
+    try:
+        secret = CredentialStore().get_secret(profile.username)
+    except Exception as exc:
+        logger.warning("读取邮箱授权码失败，本轮跳过桌面邮件：%s", exc)
+        return
+    service.mail_delivery = lambda report, workbook: send_report_with_credentials(
+        report,
+        profile.mail_settings(service.settings.mail),
+        profile.credentials(secret or ""),
+        workbook,
+    )
