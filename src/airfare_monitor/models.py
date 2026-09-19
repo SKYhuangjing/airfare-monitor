@@ -225,6 +225,7 @@ class FlightSnapshot:
     return_itinerary: ItinerarySnapshot | None = None
     seat_availability: SeatAvailability | None = None
     outbound_seat_availability: SeatAvailability | None = None
+    luggage_inclusive_price_cny: Decimal | None = None
     raw_item: dict = field(default_factory=dict, repr=False, compare=False)
 
     @property

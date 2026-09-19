@@ -454,17 +454,42 @@ def _fare_breakdown(item: dict[str, object]) -> str:
 
 
 def _baggage_and_seats(item: dict[str, object]) -> str:
-    pieces = item.get("free_baggage_piece")
-    weight = item.get("free_baggage_weight")
-    baggage = "行李未提供"
-    if pieces is not None or weight:
-        baggage = f"行李 {pieces if pieces is not None else '—'} 件"
-        if weight:
-            baggage += f" / {weight}"
+    tiers = _luggage_price_tiers(item)
+    baggage = "\n".join(tiers) if tiers else "行李额未提供"
     seats = item.get("seat_availability")
     remaining = item.get("remaining_seats")
     seat_text = _seat_text(seats) or (f"余票 {remaining}" if remaining else "余票未提供")
     return f"{baggage}\n{seat_text}"
+
+
+def _luggage_price_tiers(item: dict[str, object]) -> list[str]:
+    """按「价格级」呈现行李信息：本档免费额 + 含行李最低价（若接口提供）。
+
+    数据边界：列表响应只含免费额与含行李最低价两个信号；按重量的
+    分档购买价属详情页数据，本工具不做逐航班详情抓取。
+    """
+    pieces = item.get("free_baggage_piece")
+    weight = str(item.get("free_baggage_weight") or "").strip()
+    weight = "" if weight in ("0", "0kg", "0KG", "0Kg") else weight
+    piece_count = int(pieces) if pieces not in (None, "") else 0
+    luggage_price = _decimal(item.get("luggage_inclusive_price_cny"))
+    if piece_count == 0 and not weight and luggage_price is None and pieces is None:
+        return []  # 接口完全未提供行李信息
+    tiers: list[str] = []
+    if piece_count > 0 or weight:
+        free_text = f"本价含免费托运 {piece_count or '—'} 件"
+        if weight:
+            free_text += f" / {weight}"
+        tiers.append(free_text)
+    else:
+        tiers.append("本价不含免费托运行李")
+    luggage_price = _decimal(item.get("luggage_inclusive_price_cny"))
+    total = _decimal(item.get("total_price_cny"))
+    if luggage_price is not None and total is not None:
+        delta = luggage_price - total
+        suffix = f"（+¥{delta:,.0f}）" if delta > 0 else ""
+        tiers.append(f"含行李最低档 ¥{luggage_price:,.0f}{suffix}")
+    return tiers
 
 
 def _seat_text(value: object) -> str | None:

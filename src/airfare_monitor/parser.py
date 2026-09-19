@@ -487,6 +487,14 @@ def parse_completed_payload(
                         )
                         or None
                     ),
+                    luggage_inclusive_price_cny=_decimal(
+                        _first(
+                            item,
+                            "price.lowestPriceWithFreeLuggage",
+                            "lowestPriceWithFreeLuggage",
+                        ),
+                        "price.lowestPriceWithFreeLuggage",
+                    ),
                     source_domain=(
                         str(
                             _first(
