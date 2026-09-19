@@ -70,6 +70,13 @@ def adhoc_sign(app: Path) -> None:
     subprocess.run(["codesign", "--verify", "--deep", "--strict", str(app)], check=True)
 
 
+def include_agent_instructions(app: Path) -> None:
+    """把 AI 安装说明放进 bundle 的标准位置，供 AI 助手按 AGENTS.md 惯例发现。"""
+    resources = app / "Contents" / "Resources"
+    resources.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(ROOT / "packaging" / "AGENTS.md", resources / "AGENTS.md")
+
+
 def build_dmg(app: Path, version: str, output_root: Path) -> Path:
     output_root.mkdir(parents=True, exist_ok=True)
     dmg = output_root / f"AirfareMonitor-{version}-macOS.dmg"
@@ -77,6 +84,7 @@ def build_dmg(app: Path, version: str, output_root: Path) -> Path:
         staging = Path(temporary) / "AirfareMonitor"
         staging.mkdir()
         shutil.copytree(app, staging / "AirfareMonitor.app", symlinks=True)
+        shutil.copy2(ROOT / "packaging" / "AGENTS.md", staging / "AGENTS.md")
         (staging / "Applications").symlink_to("/Applications")
         subprocess.run(
             ["hdiutil", "create", "-volname", "AirfareMonitor",
@@ -92,6 +100,7 @@ def build_release() -> Path:
     version = release_version()
     app = build_app(version)
     smoke_test(app)
+    include_agent_instructions(app)
     adhoc_sign(app)
     output_root = ROOT / "release" / f"v{version}-mac"
     installer = build_dmg(app, version, output_root)

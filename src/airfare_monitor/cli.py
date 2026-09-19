@@ -6,6 +6,7 @@ import argparse
 import logging
 from pathlib import Path
 
+from .app_paths import AppPaths
 from .config import load_local_env, load_routes, load_settings
 from .scheduler import run_forever
 from .service import MonitorService
@@ -13,8 +14,9 @@ from .service import MonitorService
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="个人多航程航价监控")
-    parser.add_argument("--routes", default="config/routes.yaml")
-    parser.add_argument("--settings", default="config/settings.yaml")
+    parser.add_argument("--user-root", help="数据根目录；缺省与桌面客户端共用同一平台用户目录")
+    parser.add_argument("--routes", help="航程配置；缺省 <数据根>/config/routes.yaml")
+    parser.add_argument("--settings", help="运行配置；缺省 <数据根>/config/settings.yaml")
     parser.add_argument("--log-level", default="INFO", choices=("DEBUG", "INFO", "WARNING", "ERROR"))
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("validate", help="仅校验配置，不启动浏览器")
@@ -30,10 +32,14 @@ def main(argv: list[str] | None = None) -> int:
         level=getattr(logging, args.log_level),
         format="%(asctime)s %(levelname)s %(name)s - %(message)s",
     )
-    project_root = Path.cwd()
-    load_local_env(project_root / ".env")
-    legs = load_routes(args.routes)
-    settings = load_settings(args.settings, project_root=project_root)
+    paths = AppPaths.discover(user_root=args.user_root)
+    load_local_env(Path.cwd() / ".env")
+    routes_path = Path(args.routes) if args.routes else paths.routes_path
+    settings_path = Path(args.settings) if args.settings else paths.settings_path
+    # project_root 留空：settings.yaml 里的相对路径（data/、outputs/ 等）
+    # 锚定到该配置文件所在的 <数据根>，与桌面客户端的解析口径一致。
+    legs = load_routes(routes_path)
+    settings = load_settings(settings_path)
     if args.command == "validate":
         enabled = [leg for leg in legs if leg.enabled]
         round_trips = sum(leg.is_round_trip for leg in enabled)
