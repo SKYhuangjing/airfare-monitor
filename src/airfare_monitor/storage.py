@@ -144,6 +144,19 @@ def _decimal_text(value: Decimal | None) -> str | None:
     return str(value) if value is not None else None
 
 
+def _app_event_row(row: sqlite3.Row) -> dict[str, Any]:
+    item = dict(row)
+    raw_details = item.pop("details_json", None)
+    if raw_details:
+        try:
+            details = json.loads(str(raw_details))
+        except (TypeError, ValueError):
+            details = None
+        if isinstance(details, dict):
+            item["details"] = details
+    return item
+
+
 def _seat_availability_mapping(value: Any) -> dict[str, Any] | None:
     if value is None:
         return None
@@ -537,9 +550,21 @@ class SQLiteStore:
     def recent_app_events(self, *, limit: int = 30) -> list[dict[str, Any]]:
         with closing(self.connect()) as connection:
             rows = connection.execute(
-                "SELECT occurred_at, event_type, severity, leg_id, message FROM app_events ORDER BY id DESC LIMIT ?", (limit,)
+                "SELECT occurred_at, event_type, severity, leg_id, message, details_json "
+                "FROM app_events ORDER BY id DESC LIMIT ?",
+                (limit,),
             ).fetchall()
-        return [dict(row) for row in rows]
+        return [_app_event_row(row) for row in rows]
+
+    def latest_app_event(self, event_type: str, leg_id: str) -> dict[str, Any] | None:
+        with closing(self.connect()) as connection:
+            row = connection.execute(
+                "SELECT occurred_at, event_type, severity, leg_id, message, details_json "
+                "FROM app_events WHERE event_type = ? AND leg_id = ? "
+                "ORDER BY id DESC LIMIT 1",
+                (event_type, leg_id),
+            ).fetchone()
+        return _app_event_row(row) if row else None
 
     def latest_flight_candidates(self, leg_id: str) -> dict[str, Any] | None:
         """Return the latest complete successful result and its stored candidates."""

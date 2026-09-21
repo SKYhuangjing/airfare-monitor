@@ -20,12 +20,13 @@ from ..desktop_app.controller import DesktopController
 from ..desktop_app.events import (
     CoordinatorStateChanged, CycleFinished, CycleStarted, FatalError, LegFinished, LegStarted,
     ManualAttentionRequested, NextRunScheduled, MailDeliveryFailed,
-    VerificationBrowserOpened,
+    RoutesExpired, VerificationBrowserOpened,
 )
 from ..desktop_app.preferences import PreferencesManager
 from ..desktop_app.mail_profile import MailProfileRepository
 from ..desktop_app.diagnostics import export_diagnostic_zip
 from ..desktop_app.view_data import load_dashboard_data
+from ..desktop_app.route_repository import is_route_expired
 from ..models import LegConfig
 from ..storage import SQLiteStore
 from .dashboard_page import DashboardPage, _icon_label, _plain_icon
@@ -385,6 +386,12 @@ class MainWindow(QMainWindow):
             due = event.due_at.strftime("%m-%d %H:%M")
             self.dashboard.set_next_run(event.due_at)
             self._set_runtime("等待下轮", f"下次自动查询：{due}")
+        elif isinstance(event, RoutesExpired):
+            self.refresh_routes(self.controller.current_routes())
+            self.refresh_from_history()
+            self.statusBar().showMessage(
+                f"已自动暂停 {len(event.legs)} 条超过出发日期的航程"
+            )
         elif isinstance(event, ManualAttentionRequested):
             self.routes_page.set_leg_status(event.leg_id, "需要人工处理")
             self.system.set_attention(event.leg_id, event.message)
@@ -528,12 +535,20 @@ class RoutesPage(QWidget):
         layout.setSpacing(13)
 
         top = QHBoxLayout()
-        state = QLabel("运行中" if route.enabled else "已暂停")
-        state.setObjectName("activePill" if route.enabled else "pausedPill")
+        expired = is_route_expired(route)
+        state = QLabel("已过期" if expired else ("运行中" if route.enabled else "已暂停"))
+        state.setObjectName("activePill" if route.enabled and not expired else "pausedPill")
         top.addWidget(state)
         top.addStretch()
-        toggle = QPushButton("暂停" if route.enabled else "启用", objectName="routeToggle")
-        toggle.clicked.connect(lambda checked=False, item=route: self._toggle(item))
+        toggle = QPushButton(
+            "编辑日期" if expired else ("暂停" if route.enabled else "启用"),
+            objectName="routeToggle",
+        )
+        if expired:
+            toggle.setToolTip("出发日期已过，请修改为今天或未来日期后再启用")
+            toggle.clicked.connect(lambda checked=False, item=route: self._edit(item))
+        else:
+            toggle.clicked.connect(lambda checked=False, item=route: self._toggle(item))
         top.addWidget(toggle)
         layout.addLayout(top)
 
@@ -576,7 +591,12 @@ class RoutesPage(QWidget):
         _add_detail(details, 1, 1, "心理价位", threshold)
         layout.addWidget(summary)
 
-        latest = self._runtime_status.get(route.id, "等待首次查询" if route.enabled else "监控已暂停")
+        latest = (
+            "出发日期已过，监控已自动暂停"
+            if expired else self._runtime_status.get(
+                route.id, "等待首次查询" if route.enabled else "监控已暂停"
+            )
+        )
         latest_row = QHBoxLayout()
         latest_row.addWidget(QLabel("最近状态  ·", objectName="muted"))
         latest_value = QLabel(latest, objectName="routeLatest")
