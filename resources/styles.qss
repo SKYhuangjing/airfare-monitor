@@ -33,7 +33,7 @@ QLabel#healthValue { color: #148158; font-size: 17px; font-weight: 700; }
 QFrame#dashboardStatus { background: transparent; border: 0; border-radius: 0; }
 QLabel#dashboardStatusDot { color: #5b9aef; font-size: 8px; padding-top: 1px; }
 QLabel#dashboardStatusText { color: #5a7394; font-size: 12px; font-weight: 500; }
-QLabel#brandMotto { color: #8a9db8; font-family: "STXingkai", "Kaiti SC", "KaiTi", "PingFang SC"; font-size: 13px; font-style: italic; padding: 3px 12px; }
+QLabel#brandMotto { color: #8a9db8; font-family: "Xingkai SC", "Kaiti SC", "STKaiti", "PingFang SC"; font-size: 13px; font-style: italic; padding: 3px 12px; }
 
 /* App status bar — quiet utility strip, not a second chrome layer */
 QStatusBar#appStatusBar { background: #f6f9fd; border-top: 1px solid #d8e4f2; color: #5a7394; min-height: 28px; padding: 0 8px 0 4px; }

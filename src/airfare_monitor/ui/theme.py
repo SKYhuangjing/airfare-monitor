@@ -47,8 +47,8 @@ class AviationPageStack(QStackedWidget):
         # Bottom watermark — stays clear of the page header and action cluster.
         painter.setOpacity(0.22)
         painter.setPen(QColor("#7a8faa"))
-        motto_font = QFont("KaiTi", 11)
-        motto_font.setFamilies(["STXingkai", "Kaiti SC", "Kaiti TC", "KaiTi", "PingFang SC"])
+        motto_font = QFont("Xingkai SC", 11)
+        motto_font.setFamilies(["Xingkai SC", "Kaiti SC", "Kaiti TC", "STKaiti", "PingFang SC"])
         motto_font.setItalic(True)
         painter.setFont(motto_font)
         motto_width = 240

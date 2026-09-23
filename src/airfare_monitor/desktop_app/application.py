@@ -192,6 +192,7 @@ def run_desktop(paths: AppPaths, *, start_hidden: bool = False) -> int:
     coordinator.subscribe(journal.record)
     coordinator.subscribe(bridge.publish)
     instance.set_activation_handler(window.activate)
+    _install_reopen_handler(app, window)
     tray = _create_tray(app, window, coordinator)
     alert_target = [0]
 
@@ -205,7 +206,10 @@ def run_desktop(paths: AppPaths, *, start_hidden: bool = False) -> int:
 
     bridge.event_received.connect(notify_desktop, Qt.ConnectionType.QueuedConnection)
     tray.messageClicked.connect(lambda: (window.activate(), window._switch_page(alert_target[0])))
-    window.runtime_status_changed.connect(lambda text: tray.setToolTip(f"航价守望 · {text}"))
+    # 状态文案会被协调器事件持续刷新，操作指引必须随行，否则用户看不到。
+    window.runtime_status_changed.connect(
+        lambda text: tray.setToolTip(f"航价守望 · {text}（左键打开 · 右键菜单）")
+    )
     def finish_desktop() -> None:
         try:
             monitor_stopped = coordinator.shutdown(timeout=20)
@@ -223,19 +227,7 @@ def run_desktop(paths: AppPaths, *, start_hidden: bool = False) -> int:
         window.show()
     tray.show()
     if previous_unclean:
-        if start_hidden:
-            tray.showMessage(
-                "上次运行未正常结束",
-                "请打开系统状态检查浏览器和最近查询记录。",
-                QSystemTrayIcon.MessageIcon.Warning,
-                8000,
-            )
-        else:
-            QTimer.singleShot(0, lambda: QMessageBox.warning(
-                window,
-                "上次运行未正常结束",
-                "航价守望检测到上次运行未正常退出。请在系统状态中检查浏览器与最近查询记录。",
-            ))
+        _notify_previous_unclean_session(tray, window, alert_target)
     coordinator.start(run_immediately=selected_browser is not None)
     if selected_browser is None:
         window.handle_monitor_event(
@@ -245,6 +237,50 @@ def run_desktop(paths: AppPaths, *, start_hidden: bool = False) -> int:
     if add_first_route:
         QTimer.singleShot(0, window.begin_first_route)
     return app.exec()
+
+
+def _install_reopen_handler(app: QApplication, window: MainWindow) -> None:
+    """Dock 图标点击 / open -a 已运行实例：macOS 只激活应用、不重启进程，
+    SingleInstance 的 socket 路径不会触发；系统 reopen 事件在 Qt 里表现为
+    应用进入 Active 态。此时若主窗口不可见（收在托盘），按 macOS 惯例把
+    窗口带回来，否则用户没有任何入口恢复界面。"""
+    def restore(state: Qt.ApplicationState) -> None:
+        if state == Qt.ApplicationState.ApplicationActive and not window.isVisible():
+            window.activate()
+
+    app.applicationStateChanged.connect(restore)
+
+
+def _notify_previous_unclean_session(
+    tray: QSystemTrayIcon, window: MainWindow, alert_target: list[int]
+) -> None:
+    """上次未正常结束只发非阻塞提醒。
+
+    应用级模态 QMessageBox 会吃掉整个应用的输入事件（托盘点击、菜单、
+    输入全部无响应，直到用户注意到角落里的框），是“应用卡住”误报的
+    来源之一；事件详情本来就会写入系统状态页，提醒点击也直达该页。
+    通知横幅不可用（未授权/无托盘消息支持）时退化为非模态对话框，
+    绝不回到阻塞式提示。
+    """
+    alert_target[0] = 4  # 系统状态页，与 notification_policy 的目标页口径一致
+    if tray.supportsMessages():
+        tray.showMessage(
+            "上次运行未正常结束",
+            "请打开系统状态检查浏览器和最近查询记录。",
+            QSystemTrayIcon.MessageIcon.Warning,
+            8000,
+        )
+        return
+    notice = QMessageBox(
+        QMessageBox.Icon.Warning,
+        "上次运行未正常结束",
+        "航价守望检测到上次运行未正常退出。请打开系统状态检查浏览器和最近查询记录。",
+        QMessageBox.StandardButton.Ok,
+        window,
+    )
+    notice.setModal(False)
+    window._unclean_exit_notice = notice  # 保持引用，避免对话框被回收
+    notice.show()
 
 
 def _apply_style(app: QApplication, resource_root: Path) -> None:
@@ -308,23 +344,30 @@ def _create_tray(app: QApplication, window: MainWindow, coordinator: MonitorCoor
     if sys.platform == "darwin" and not _native_tray_menu_supported():
         # macOS 27 + Qt Cocoa（≤6.11.2，QTBUG-147449 未修复版）:
         # setContextMenu() 会让 Qt 在状态栏菜单路径上对 KitDefined 事件调用
-        # -[NSEvent clickCount] 触发断言崩溃。改由 activated() 弹 QMenu。
-        # 一旦升级到含修复的 PySide6（≥6.11.3 / ≥6.12），自动回到原生菜单。
-        tray.setToolTip("航价守望 · 点击打开菜单")
+        # -[NSEvent clickCount] 触发断言崩溃，只能由 activated() 自行分发。
+        # macOS 点状态栏图标不会激活应用，而后台应用的 QMenu 弹窗拿不到
+        # key window，实测会在一秒内自灭（用户表现为“点了没反应”）；
+        # showNormal() 呈现主窗口后应用即被系统激活，菜单才能存活。因此：
+        # 左键=直接打开主窗口（从托盘“启动”的预期），右键=菜单；主窗口
+        # 隐藏时弹菜单前先拉起主窗口。升级 PySide6 ≥6.11.3 自动回原生菜单。
+        tray.setToolTip("航价守望 · 左键打开主窗口，右键打开菜单")
 
         def show_menu() -> None:
             # 再延一拍：不要在 Cocoa 状态栏点击的通知观察者栈内同步弹菜单，
             # 退出该栈后由事件循环统一处理，进一步避开 AppKit 断言路径。
+            if not window.isVisible():
+                window.activate()
             QTimer.singleShot(0, lambda: menu.popup(QCursor.pos()))
 
         def on_activated(reason: QSystemTrayIcon.ActivationReason) -> None:
-            if reason in {
+            if reason == QSystemTrayIcon.ActivationReason.Context:
+                show_menu()
+            elif reason in {
                 QSystemTrayIcon.ActivationReason.Trigger,
                 QSystemTrayIcon.ActivationReason.DoubleClick,
-                QSystemTrayIcon.ActivationReason.Context,
                 QSystemTrayIcon.ActivationReason.MiddleClick,
             }:
-                show_menu()
+                window.activate()
 
         tray.activated.connect(on_activated)
     else:
