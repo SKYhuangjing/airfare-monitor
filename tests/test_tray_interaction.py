@@ -158,17 +158,30 @@ class TrayInteractionTests(unittest.TestCase):
         window = _StubWindow()
         window.visible = False
         fake_app = _FakeApp()
-        app_module._install_reopen_handler(fake_app, window)  # type: ignore[arg-type]
+        app_module._install_reopen_handler(fake_app, window, arm_after_ms=0)  # type: ignore[arg-type]
+        QTest.qWait(20)  # 让 arm_after_ms=0 的布防定时器触发
         fake_app.applicationStateChanged.emit(Qt.ApplicationState.ApplicationInactive)
         self.assertEqual(window.activated, 0)
         fake_app.applicationStateChanged.emit(Qt.ApplicationState.ApplicationActive)
         self.assertEqual(window.activated, 1)
 
+    def test_reopen_quarantined_during_launch_activation(self):
+        window = _StubWindow()
+        window.visible = False
+        fake_app = _FakeApp()
+        # arm_after_ms 足够大：模拟启动后 3 秒内的「启动激活」，
+        # 托盘模式启动瞬间不应被顶出主窗口。
+        app_module._install_reopen_handler(fake_app, window, arm_after_ms=60000)  # type: ignore[arg-type]
+        fake_app.applicationStateChanged.emit(Qt.ApplicationState.ApplicationActive)
+        QTest.qWait(20)
+        self.assertEqual(window.activated, 0, "布防前的 Active 转换是启动激活，不得唤出主窗口")
+
     def test_reopen_leaves_visible_window_alone(self):
         window = _StubWindow()
         window.visible = True
         fake_app = _FakeApp()
-        app_module._install_reopen_handler(fake_app, window)  # type: ignore[arg-type]
+        app_module._install_reopen_handler(fake_app, window, arm_after_ms=0)  # type: ignore[arg-type]
+        QTest.qWait(20)
         fake_app.applicationStateChanged.emit(Qt.ApplicationState.ApplicationActive)
         self.assertEqual(window.activated, 0)
 

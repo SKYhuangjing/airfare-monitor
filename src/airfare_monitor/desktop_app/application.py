@@ -181,11 +181,26 @@ def run_desktop(paths: AppPaths, *, start_hidden: bool = False) -> int:
 
     controller.on_routes_changed(routes_changed)
 
+    tray_mode = desktop_settings.launch_to_tray
+
     def apply_runtime_settings(saved: object) -> None:
+        nonlocal tray_mode
         journal.record_settings_changed()
         coordinator.apply_settings()
         window.refresh_from_history()
+        # 托盘模式即时生效：切换 Dock 图标可见性，无需重启应用。
+        # 系统状态页保存传 DesktopSettings；通知设置页保存转发 None——
+        # 此时以持久化设置为准，避免把运行中的托盘模式误关。
+        tray_mode = _resolve_tray_mode(saved, preferences)
+        _apply_dock_visibility(not tray_mode)
 
+    def enforce_tray_mode_on_active(state: Qt.ApplicationState) -> None:
+        # LaunchServices 会在 open/再次拉起时把 UIElement 应用提升回
+        # Foreground（Dock 图标复现）；每次激活时重新断言 Accessory。
+        if tray_mode and state == Qt.ApplicationState.ApplicationActive:
+            _apply_dock_visibility(False)
+
+    app.applicationStateChanged.connect(enforce_tray_mode_on_active)
     window.runtime_settings_saved.connect(apply_runtime_settings)
     bridge = CoordinatorEventBridge(app)
     bridge.event_received.connect(window.handle_monitor_event, Qt.ConnectionType.QueuedConnection)
@@ -223,7 +238,12 @@ def run_desktop(paths: AppPaths, *, start_hidden: bool = False) -> int:
 
     app.aboutToQuit.connect(finish_desktop)
     selected_browser = preferences.selected_browser(desktop_settings)
-    if not start_hidden or selected_browser is None:
+    # 托盘模式（系统状态设置）与 --background（登录启动项）同口径：
+    # 启动不弹主窗口、隐藏 Dock 图标，纯菜单栏驻留；
+    # 未检测到浏览器时仍弹出主窗口引导完成设置。
+    if tray_mode:
+        _apply_dock_visibility(False)
+    if not (start_hidden or desktop_settings.launch_to_tray) or selected_browser is None:
         window.show()
     tray.show()
     if previous_unclean:
@@ -239,13 +259,60 @@ def run_desktop(paths: AppPaths, *, start_hidden: bool = False) -> int:
     return app.exec()
 
 
-def _install_reopen_handler(app: QApplication, window: MainWindow) -> None:
+def _resolve_tray_mode(saved: object, preferences: PreferencesManager) -> bool:
+    """托盘模式当前值：saved 为 DesktopSettings 时直接取；通知设置页保存
+    经 runtime_settings_saved.emit(None) 转发，此时回读持久化设置。"""
+    if saved is None:
+        return preferences.load().launch_to_tray
+    return bool(getattr(saved, "launch_to_tray", False))
+
+
+def _apply_dock_visibility(visible: bool) -> None:
+    """托盘模式 = 纯菜单栏应用：隐藏 Dock 图标与 Cmd-Tab 条目。
+
+    对应 NSApplication 激活策略切换 Regular(0) / Accessory(1)；
+    PySide6 6.11 未暴露 setDockIconVisible，走 objc_msgSend。
+    Accessory 应用仍可显示窗口并在窗口聚焦时持有菜单栏。
+    """
+    if sys.platform != "darwin":
+        return
+    import ctypes
+
+    lib = ctypes.cdll.LoadLibrary(None)
+    lib.objc_getClass.restype = ctypes.c_void_p
+    lib.objc_getClass.argtypes = [ctypes.c_char_p]
+    lib.sel_registerName.restype = ctypes.c_void_p
+    lib.sel_registerName.argtypes = [ctypes.c_char_p]
+    msg = lib.objc_msgSend
+    msg.restype = ctypes.c_void_p
+    msg.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    ns_app = msg(lib.objc_getClass(b"NSApplication"), lib.sel_registerName(b"sharedApplication"))
+    set_policy = lib.objc_msgSend
+    set_policy.restype = None
+    set_policy.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int]
+    # NSApplicationActivationPolicyRegular=0, Accessory=1
+    set_policy(ns_app, lib.sel_registerName(b"setActivationPolicy:"), 0 if visible else 1)
+
+
+def _install_reopen_handler(app: QApplication, window: MainWindow, *, arm_after_ms: int = 3000) -> None:
     """Dock 图标点击 / open -a 已运行实例：macOS 只激活应用、不重启进程，
     SingleInstance 的 socket 路径不会触发；系统 reopen 事件在 Qt 里表现为
     应用进入 Active 态。此时若主窗口不可见（收在托盘），按 macOS 惯例把
-    窗口带回来，否则用户没有任何入口恢复界面。"""
+    窗口带回来，否则用户没有任何入口恢复界面。
+
+    启动后 arm_after_ms 内的 Active 转换视为「启动激活」（open/双击/Finder
+    拉起时系统自带的激活），不当作用户 reopen——否则托盘模式（启动不弹
+    主窗口）会在启动瞬间被这次激活顶掉。
+    """
+    armed = [False]
+
+    def _arm() -> None:
+        armed[0] = True
+
+    QTimer.singleShot(arm_after_ms, _arm)
+
     def restore(state: Qt.ApplicationState) -> None:
-        if state == Qt.ApplicationState.ApplicationActive and not window.isVisible():
+        if armed[0] and state == Qt.ApplicationState.ApplicationActive and not window.isVisible():
             window.activate()
 
     app.applicationStateChanged.connect(restore)

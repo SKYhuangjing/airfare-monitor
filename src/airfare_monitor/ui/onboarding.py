@@ -49,7 +49,7 @@ class OnboardingDialog(QDialog):
             steps.addWidget(QLabel(text, objectName="stepDone"))
         layout.addLayout(steps)
 
-        self.form = RuntimePreferencesForm(browsers, settings)
+        self.form = RuntimePreferencesForm(browsers, settings, show_launch_to_tray=False)
         self.form.redetect_requested.connect(self._redetect)
         layout.addWidget(
             preference_card(
