@@ -25,7 +25,7 @@ from .credential_store import CredentialStore
 from .controller import DesktopController
 from .event_bridge import CoordinatorEventBridge
 from .event_journal import AppEventJournal
-from .events import CoordinatorStateChanged
+from .events import CoordinatorStateChanged, CycleFinished
 from .monitor_coordinator import MonitorCoordinator
 from .notification_policy import alert_for_event
 from .preferences import PreferencesManager
@@ -206,13 +206,20 @@ def run_desktop(paths: AppPaths, *, start_hidden: bool = False) -> int:
     bridge.event_received.connect(window.handle_monitor_event, Qt.ConnectionType.QueuedConnection)
     coordinator.subscribe(journal.record)
     coordinator.subscribe(bridge.publish)
+    # Date expiry is a local configuration check and must also run when no
+    # usable browser is configured, so perform it before starting the worker.
+    coordinator.reconcile_expired_routes()
     instance.set_activation_handler(window.activate)
     _install_reopen_handler(app, window)
     tray = _create_tray(app, window, coordinator)
     alert_target = [0]
 
     def notify_desktop(event: object) -> None:
-        alert = alert_for_event(event)
+        low_price_details = (
+            journal.low_price_alert_details(event.report.run_id)
+            if isinstance(event, CycleFinished) else None
+        )
+        alert = alert_for_event(event, low_price_details=low_price_details)
         if alert is None:
             return
         alert_target[0] = alert.target_page

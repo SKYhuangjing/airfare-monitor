@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
@@ -21,6 +23,25 @@ class RouteRepository:
         validate_enabled_leg_limit(legs)
         payload = {"legs": [_serialize_leg(leg) for leg in legs]}
         atomic_write_yaml(self.path, payload, validate=lambda temporary: load_routes(temporary, allow_empty=True))
+
+    def pause_expired(
+        self, today: date | None = None,
+    ) -> tuple[list[LegConfig], tuple[LegConfig, ...]]:
+        """Persistently pause enabled routes whose outbound date has passed."""
+        current_date = today or date.today()
+        legs = self.load()
+        expired = tuple(leg for leg in legs if leg.enabled and is_route_expired(leg, current_date))
+        if not expired:
+            return legs, ()
+        expired_ids = {leg.id for leg in expired}
+        updated = [replace(leg, enabled=False) if leg.id in expired_ids else leg for leg in legs]
+        self.save(updated)
+        return updated, expired
+
+
+def is_route_expired(leg: LegConfig, today: date | None = None) -> bool:
+    """A trip expires after its outbound travel date, never during that date."""
+    return leg.departure_date < (today or date.today())
 
 
 def _serialize_leg(leg: LegConfig) -> dict[str, object]:

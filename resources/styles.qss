@@ -113,6 +113,12 @@ QFrame#timelineEntry { background: transparent; border: 0; border-bottom: 1px so
 QLabel#timelineDot { color: #2478ec; font-size: 12px; padding-top: 7px; }
 QLabel#timelineTime { color: #7189aa; font-size: 11px; }
 QLabel#timelineMessage { color: #1c365d; font-size: 12px; }
+QFrame#lowPriceTimelineEntry { background: #f0fbf6; border: 1px solid #bfead6; border-radius: 11px; margin: 3px 0 6px 0; }
+QLabel#lowPriceRoute { color: #14345e; font-size: 13px; font-weight: 700; }
+QLabel#lowPriceValue { color: #087f55; font-size: 17px; font-weight: 800; }
+QLabel#lowPriceMeta { color: #557594; font-size: 11px; }
+QPushButton#lowPriceEventAction { min-height: 0; border: 0; background: transparent; color: #087f55; font-size: 11px; padding: 2px 0; font-weight: 700; }
+QPushButton#lowPriceEventAction:hover { border: 0; background: transparent; color: #056943; text-decoration: underline; }
 QFrame#supportPromptCard { background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 #f4fbff, stop:1 #eef5ff); border: 1px solid #cfe1f8; border-radius: 11px; margin: 2px 0 7px 0; }
 QLabel#supportPromptTitle { color: #173762; font-size: 13px; font-weight: 700; }
 QLabel#supportPromptText { color: #6580a3; font-size: 11px; }
@@ -172,6 +178,7 @@ QLabel#infoStrip { color: #5f789b; background: #edf5ff; border-radius: 9px; padd
 
 /* Pills and route typography */
 QLabel#activePill { color: #087f55; background: #e7f6ef; border: 1px solid #cfe8da; border-radius: 6px; padding: 4px 9px; font-weight: 600; font-size: 12px; }
+QLabel#lowPricePill { color: #087f55; background: #d9f7e9; border: 1px solid #aee7ce; border-radius: 6px; padding: 4px 9px; font-weight: 600; font-size: 12px; }
 QLabel#pausedPill { color: #66788e; background: #eef2f6; border: 1px solid #dde4ec; border-radius: 6px; padding: 4px 9px; font-weight: 600; font-size: 12px; }
 QLabel#sourcePill { color: #1768d7; background: #eaf2fc; border-radius: 6px; padding: 4px 9px; }
 QLabel#neutralPill { color: #536b87; background: #eef2f6; border-radius: 6px; padding: 4px 9px; }
