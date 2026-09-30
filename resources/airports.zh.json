@@ -1,6 +1,6 @@
 {
   "catalog_version": 1,
-  "updated_at": "2026-09-09",
+  "updated_at": "2026-09-30",
   "airports": [
     {
       "airport_iata": "PEK",
@@ -698,6 +698,27 @@
         "osaka",
         "kansai",
         "kix"
+      ],
+      "supported_sources": [
+        "qunar"
+      ],
+      "verified_at": null,
+      "enabled": true
+    },
+    {
+      "airport_iata": "CTS",
+      "display_name_zh": "札幌新千岁",
+      "city_name_zh": "札幌",
+      "airport_name_zh": "新千岁国际机场",
+      "display_name_en": "New Chitose Airport",
+      "country_code": "JP",
+      "aliases": [
+        "札幌",
+        "新千岁",
+        "新千歳",
+        "sapporo",
+        "chitose",
+        "cts"
       ],
       "supported_sources": [
         "qunar"
