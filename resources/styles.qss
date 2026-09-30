@@ -127,8 +127,13 @@ QPushButton#supportPromptDismiss:hover { border: 0; background: transparent; col
 QPushButton#supportPromptAction { min-height: 0; border: 0; background: transparent; color: #1768d8; font-size: 11px; padding: 3px 0; font-weight: 700; }
 QPushButton#supportPromptAction:hover { border: 0; background: transparent; color: #0d55b9; text-decoration: underline; }
 QFrame#historyRouteSelector { background: rgba(255, 255, 255, 248); border: 1px solid #c9dcf2; border-radius: 12px; min-height: 48px; }
-QComboBox#historyRouteCombo { background: transparent; border: 0; padding: 7px 32px 7px 2px; color: #18345e; font-size: 15px; font-weight: 700; }
-QComboBox#historyRouteCombo:hover, QComboBox#historyRouteCombo:focus { background: transparent; border: 0; }
+QPushButton#historyRouteButton { background: transparent; border: 0; padding: 7px 30px 7px 2px; color: #18345e; font-size: 15px; font-weight: 700; text-align: left; }
+QPushButton#historyRouteButton:hover { color: #0d55b9; }
+QPushButton#historyRouteButton:disabled { color: #9aa9bd; }
+QMenu#historyRouteMenu { background: rgba(255, 255, 255, 252); border: 1px solid #c8dcf5; border-radius: 10px; padding: 6px; }
+QMenu#historyRouteMenu::item { color: #18345e; font-size: 14px; font-weight: 600; border-radius: 7px; padding: 8px 14px; margin: 1px 2px; }
+QMenu#historyRouteMenu::item:selected { background: #e4f0ff; color: #114fae; }
+QMenu#historyRouteMenu::indicator:checked { image: none; }
 QFrame#historyPeriodSwitch { background: rgba(255,255,255,245); border: 1px solid #c9dcf2; border-radius: 12px; }
 QFrame#historyPeriodSwitch QPushButton#periodButton { min-width: 100px; min-height: 27px; border: 0; border-radius: 10px; padding: 8px 13px; }
 QLabel#periodSummary { color: #315b91; background: #f6faff; border: 1px solid #cbdff7; border-radius: 9px; padding: 8px 12px; font-weight: 600; }

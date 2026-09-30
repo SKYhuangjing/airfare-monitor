@@ -9,15 +9,15 @@ from decimal import Decimal
 from pathlib import Path
 
 from PySide6.QtCore import QPointF, QRectF, Qt, QUrl
-from PySide6.QtGui import QColor, QDesktopServices, QFontMetrics, QLinearGradient, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QColor, QCursor, QDesktopServices, QFontMetrics, QLinearGradient, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QButtonGroup,
-    QComboBox,
     QFrame,
     QHeaderView,
     QHBoxLayout,
     QLabel,
+    QMenu,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -213,6 +213,7 @@ class HistoryPage(QWidget):
         self.outputs_dir = outputs_dir
         self.open_activity = open_activity
         self.routes: list[LegConfig] = []
+        self._current_route_id: str | None = None
         self.hours = 24
 
         layout = QVBoxLayout(self)
@@ -243,10 +244,13 @@ class HistoryPage(QWidget):
         route_selector_layout.setContentsMargins(15, 5, 12, 5)
         route_selector_layout.setSpacing(10)
         route_selector_layout.addWidget(_icon_label("plane", "#176be3", "transparent", 32))
-        self.route_combo = QComboBox()
-        self.route_combo.setObjectName("historyRouteCombo")
-        self.route_combo.currentIndexChanged.connect(self.reload)
-        route_selector_layout.addWidget(self.route_combo, 1)
+        # Qt 原生 QComboBox 的下拉弹层在 macOS 27 + Qt 6.11.2 上无法绘制
+        # （与托盘 QTBUG-147449 同族，点击后弹层零像素），且本体渲染间歇
+        # 丢文字；改用自绘胶囊按钮 + QMenu，渲染路径与托盘菜单一致。
+        self.route_button = QPushButton("", objectName="historyRouteButton")
+        self.route_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.route_button.clicked.connect(self._show_route_menu)
+        route_selector_layout.addWidget(self.route_button, 1)
         filters.addWidget(route_selector, 1)
         period_switch = QFrame(objectName="historyPeriodSwitch")
         period_layout = QHBoxLayout(period_switch)
@@ -321,18 +325,43 @@ class HistoryPage(QWidget):
         layout.addLayout(body, 1)
 
     def refresh(self, routes: list[LegConfig]) -> None:
-        selected_id = self.route_combo.currentData()
+        selected_id = self._current_route_id
         self.routes = list(routes)
-        self.route_combo.blockSignals(True)
-        self.route_combo.clear()
-        for route in routes:
-            label = f"{route.origin_name_zh or route.origin_airport_iata} {route.origin_airport_iata} → {route.destination_name_zh or route.destination_airport_iata} {route.destination_airport_iata}"
-            self.route_combo.addItem(label, route.id)
-        if selected_id:
-            index = self.route_combo.findData(selected_id)
-            self.route_combo.setCurrentIndex(max(0, index))
-        self.route_combo.blockSignals(False)
+        if selected_id and any(route.id == selected_id for route in self.routes):
+            current_id: str | None = selected_id
+        elif self.routes:
+            current_id = self.routes[0].id
+        else:
+            current_id = None
+        self._apply_current_route(current_id)
         self.reload()
+
+    @staticmethod
+    def _route_label(route: LegConfig) -> str:
+        return (
+            f"{route.origin_name_zh or route.origin_airport_iata} {route.origin_airport_iata}"
+            f" → {route.destination_name_zh or route.destination_airport_iata} {route.destination_airport_iata}"
+        )
+
+    def _apply_current_route(self, route_id: str | None) -> None:
+        self._current_route_id = route_id
+        route = next((item for item in self.routes if item.id == route_id), None)
+        self.route_button.setText(self._route_label(route) if route else "暂无航程")
+
+    def _show_route_menu(self) -> None:
+        if not self.routes:
+            return
+        menu = QMenu(self)
+        menu.setObjectName("historyRouteMenu")
+        for route in self.routes:
+            action = menu.addAction(self._route_label(route))
+            action.setCheckable(True)
+            action.setChecked(route.id == self._current_route_id)
+            action.setData(route.id)
+        chosen = menu.exec(QCursor.pos())
+        if chosen is not None and chosen.data() != self._current_route_id:
+            self._apply_current_route(str(chosen.data()))
+            self.reload()
 
     def set_period(self, hours: int) -> None:
         self.hours = hours
@@ -340,7 +369,7 @@ class HistoryPage(QWidget):
         self.reload()
 
     def reload(self) -> None:
-        leg_id = self.route_combo.currentData()
+        leg_id = self._current_route_id
         route = next((item for item in self.routes if item.id == leg_id), None)
         if route is None:
             rows: list[dict[str, object]] = []

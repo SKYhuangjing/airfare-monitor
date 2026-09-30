@@ -417,11 +417,29 @@ class DesktopR2Tests(unittest.TestCase):
             store.initialize()
             page = HistoryPage(store, open_latest_report=lambda: None, outputs_dir=Path(temp))
             page.refresh([_route("route-1")])
-            self.assertEqual(page.route_combo.count(), 1)
+            self.assertEqual(len(page.routes), 1)
+            self.assertEqual(page.route_button.text(), "上海浦东 PVG → 吉隆坡 KUL")
             self.assertEqual(page.records.rowCount(), 0)
             self.assertEqual(page.records.columnCount(), 3)
             page.set_period(24 * 7)
             self.assertEqual(page.period_summary.text(), "▣  最近 7 天")
+            page.close()
+
+    def test_history_route_selector_keeps_selection_and_switches(self):
+        with TemporaryDirectory() as temp:
+            store = SQLiteStore(Path(temp) / "monitor.sqlite3")
+            store.initialize()
+            page = HistoryPage(store, open_latest_report=lambda: None, outputs_dir=Path(temp))
+            page.refresh([_route("route-1"), _route("route-2")])
+            self.assertEqual(page._current_route_id, "route-1")
+            # 原选中航程仍在列表时保持选中
+            page._apply_current_route("route-2")
+            page.refresh([_route("route-1"), _route("route-2")])
+            self.assertEqual(page._current_route_id, "route-2")
+            # 原选中航程消失时回落到第一条
+            page.refresh([_route("route-3")])
+            self.assertEqual(page._current_route_id, "route-3")
+            self.assertEqual(page.route_button.text(), "上海浦东 PVG → 吉隆坡 KUL")
             page.close()
 
 
