@@ -124,11 +124,8 @@ def _price(price: dict[str, Any], leg: LegConfig) -> tuple[Decimal, Decimal] | N
             raise ParseError("携程余票提示无效")
         if seats < leg.adult_count + leg.child_count:
             return None
-    base = _amount(price.get("adultPrice"), "adultPrice") * leg.adult_count
-    tax = _amount(price.get("adultTax"), "adultTax") * leg.adult_count
-    if leg.child_count:
-        base += _amount(price.get("childPrice"), "childPrice") * leg.child_count
-        tax += _amount(price.get("childTax"), "childTax") * leg.child_count
+    base = _amount(price.get("adultPrice"), "adultPrice")
+    tax = _amount(price.get("adultTax"), "adultTax")
     if base + tax <= 0:
         raise ParseError("携程含税总价必须大于零")
     return base, tax

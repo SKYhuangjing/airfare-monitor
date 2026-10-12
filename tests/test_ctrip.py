@@ -103,9 +103,9 @@ class CtripParserTests(unittest.TestCase):
             {"adultPrice": 100, "adultTax": 50, "childPrice": 80, "childTax": 20,
              "eligibility": "NOR", "cabin": "Y", "ticketCount": 9}]
         flights, _, _, _ = parse_ctrip_payload(value, leg(adult_count=2, child_count=1), NOW)
-        self.assertEqual(flights[0].base_price_cny, Decimal("280"))
-        self.assertEqual(flights[0].tax_cny, Decimal("120"))
-        self.assertEqual(flights[0].total_price_cny, Decimal("400"))
+        self.assertEqual(flights[0].base_price_cny, Decimal("100"))
+        self.assertEqual(flights[0].tax_cny, Decimal("50"))
+        self.assertEqual(flights[0].total_price_cny, Decimal("150"))
 
     def test_restricted_cabin_or_insufficient_inventory_is_not_a_low_price(self):
         row = fixture()["data"]["flightItineraryList"][0]
@@ -119,7 +119,7 @@ class CtripParserTests(unittest.TestCase):
         row = fixture()["data"]["flightItineraryList"][0]
         row["priceList"] = [{"adultPrice": "100.1", "adultTax": "50.1", "eligibility": "NOR", "cabin": "Y"}]
         flights, _, _, _ = parse_ctrip_payload(payload(rows=[row]), leg(adult_count=2), NOW)
-        self.assertEqual(flights[0].total_price_cny, Decimal("304"))
+        self.assertEqual(flights[0].total_price_cny, Decimal("152"))
 
     def test_malformed_security_flags_cannot_be_completed(self):
         value = fixture()

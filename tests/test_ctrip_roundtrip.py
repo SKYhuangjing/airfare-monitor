@@ -142,7 +142,7 @@ class CtripRoundTripParserTests(unittest.TestCase):
         base = row["priceList"][0]
         row["priceList"] = [dict(base, adultPrice=1, cabin="Y|C"), dict(base, adultPrice=100, adultTax=50, childPrice=80, childTax=20)]
         flights, _, _, _ = parse_ctrip_payload(payload([row]), leg(adult_count=2, child_count=1), NOW)
-        self.assertEqual(flights[0].total_price_cny, Decimal("400"))
+        self.assertEqual(flights[0].total_price_cny, Decimal("150"))
 
     def test_preferred_match_keeps_the_return_and_no_secret_metadata(self):
         row = direct_row()
