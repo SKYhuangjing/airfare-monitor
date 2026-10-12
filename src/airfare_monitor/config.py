@@ -12,7 +12,8 @@ from typing import Any
 
 import yaml
 
-from .errors import ConfigError
+from .errors import ConfigError, CollectionError
+from .market import resolve_provider
 from .models import EtdWindow, LegConfig, PreferredSchedule
 
 _IATA_RE = re.compile(r"^[A-Z]{3}$")
@@ -80,6 +81,7 @@ class BrowserSettings:
         "&childNum={child_count}&cabinClass={cabin_class}"
     )
     executable_path: Path | None = None
+    background: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -266,6 +268,9 @@ def load_routes(path: str | Path, *, allow_empty: bool = False) -> list[LegConfi
         market = _string(item.get("market", "auto"), f"{prefix}.market").lower()
         if market not in _MARKETS:
             raise ConfigError(f"{prefix}.market 必须是 auto、domestic 或 international")
+        provider = _string(item.get("provider", "auto"), f"{prefix}.provider").lower()
+        if provider not in {"auto", "ctrip", "qunar", "tongcheng"}:
+            raise ConfigError(f"{prefix}.provider 必须是 auto、ctrip、qunar 或 tongcheng")
 
         raw_preferred = item.get("preferred_schedules", [])
         if not isinstance(raw_preferred, list):
@@ -395,6 +400,7 @@ def load_routes(path: str | Path, *, allow_empty: bool = False) -> list[LegConfi
                 ),
                 preferred_schedules=tuple(preferred_schedules),
                 market=market,
+                provider=provider,
                 max_layover_minutes=(
                     _positive_int(item["max_layover_minutes"], f"{prefix}.max_layover_minutes")
                     if item.get("max_layover_minutes") is not None
@@ -408,6 +414,12 @@ def load_routes(path: str | Path, *, allow_empty: bool = False) -> list[LegConfi
                 destination_airports=_optional_iata_list(item.get("destination_airports"), f"{prefix}.destination_airports"),
             )
         )
+    for leg in legs:
+        if leg.provider != "auto":
+            try:
+                resolve_provider(leg)
+            except CollectionError as exc:
+                raise ConfigError(str(exc)) from exc
     validate_enabled_leg_limit(legs)
     if not allow_empty and not any(leg.enabled for leg in legs):
         raise ConfigError("至少需要启用一个航程")
@@ -458,6 +470,7 @@ def load_settings(path: str | Path, *, project_root: str | Path | None = None) -
         ),
         browser=BrowserSettings(
             headless=_boolean(_required(browser, "headless", "settings.browser"), "settings.browser.headless"),
+            background=_boolean(browser.get("background", False), "settings.browser.background"),
             user_data_path=relative_path(
                 _required(browser, "user_data_path", "settings.browser"), "settings.browser.user_data_path"
             ),

@@ -61,6 +61,7 @@ def _serialize_leg(leg: LegConfig) -> dict[str, object]:
         "child_count": leg.child_count,
         "cabin_class": leg.cabin_class,
         "market": leg.market,
+        "provider": leg.provider,
         "preferred_schedules": [
             {
                 "label": item.label,

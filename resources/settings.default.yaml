@@ -6,6 +6,7 @@ schedule:
 browser:
   engine: drissionpage
   headless: false
+  background: false
   executable_path: null
   user_data_path: data/browser-profile
   local_port: 9333

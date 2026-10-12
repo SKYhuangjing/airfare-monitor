@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class DesktopFoundationTests(unittest.TestCase):
     def test_bundled_catalog_supports_multi_airport_city_and_pinyin(self):
         catalog = AirportCatalog.load(ROOT / "resources" / "airports.zh.json")
-        self.assertEqual(catalog.version, 1)
+        self.assertEqual(catalog.version, 2)
         self.assertEqual({item.airport_iata for item in catalog.search("上海")}, {"SHA", "PVG"})
         self.assertEqual({item.airport_iata for item in catalog.search("tokyo")}, {"HND", "NRT"})
         self.assertEqual(catalog.search("PVG")[0].city_name_zh, "上海")

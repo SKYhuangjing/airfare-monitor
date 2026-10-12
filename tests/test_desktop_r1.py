@@ -61,7 +61,8 @@ class DesktopR1Tests(unittest.TestCase):
 
             core = manager.repository.load_core()
             self.assertEqual(core.schedule.interval_minutes, 60)
-            self.assertTrue(core.browser.headless)
+            self.assertFalse(core.browser.headless)
+            self.assertTrue(core.browser.background)
             self.assertEqual(core.browser.executable_path, chrome.resolve())
             self.assertTrue(saved.onboarding_completed)
             self.assertTrue(autostart.enabled)

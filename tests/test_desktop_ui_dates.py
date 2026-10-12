@@ -76,6 +76,30 @@ class DateAndDomesticGuidanceTests(unittest.TestCase):
             self.assertTrue(wizard.domestic_roundtrip_hint.isHidden())
             wizard.close()
 
+    def test_roundtrip_fields_scroll_in_small_styled_window(self) -> None:
+        from airfare_monitor.desktop_app.application import _apply_style
+        previous_style = self.app.styleSheet()
+        with tempfile.TemporaryDirectory() as temp:
+            wizard = self._wizard(temp)
+            try:
+                _apply_style(self.app, AppPaths.discover(user_root=temp).resource_root)
+                wizard.origin_picker.set_record(wizard.catalog.by_iata("PVG"))
+                wizard.destination_picker.set_record(wizard.catalog.by_iata("KUL"))
+                wizard.trip_type.setCurrentIndex(1)
+                wizard.resize(940, 690)
+                wizard.show()
+                self.app.processEvents()
+                scroll = wizard.route_fields_scroll
+                self.assertGreater(scroll.verticalScrollBar().maximum(), 0)
+                self.assertTrue(wizard.departure_date_field.rect().contains(wizard.departure_date.geometry()))
+                scroll.ensureWidgetVisible(wizard.return_end_time)
+                self.app.processEvents()
+                position = wizard.return_end_time.mapTo(scroll.viewport(), wizard.return_end_time.rect().bottomLeft())
+                self.assertLess(position.y(), scroll.viewport().height())
+            finally:
+                wizard.close()
+                self.app.setStyleSheet(previous_style)
+
     def test_refreshed_time_and_stepper_controls_preserve_values(self) -> None:
         time_picker = TimeComboBox(QTime(0, 0))
         time_picker.resize(180, 44)
@@ -93,6 +117,36 @@ class DateAndDomesticGuidanceTests(unittest.TestCase):
         self.assertEqual(stepper.value(), 3)
         stepper.down.click()
         self.assertEqual(stepper.value(), 2)
+
+    def test_query_provider_can_be_saved_reloaded_and_limits_incompatible_routes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            wizard = self._wizard(temp)
+            wizard.origin_picker.set_record(wizard.catalog.by_iata("PVG"))
+            jeju = wizard.catalog.by_iata("CJU")
+            self.assertIsNotNone(jeju)
+            self.assertIn("ctrip", jeju.supported_sources)
+            wizard.destination_picker.set_record(jeju)
+            wizard._update_capability()
+            self.assertIn("携程", wizard.preview_source.text())
+            wizard.provider.setCurrentIndex(wizard.provider.findData("qunar"))
+            route = wizard._build_route()
+            repo = RouteRepository(AppPaths.discover(user_root=temp).routes_path)
+            repo.save([route])
+            wizard._load_route(repo.load()[0])
+            self.assertEqual(wizard.provider.currentData(), "qunar")
+            self.assertIn("去哪儿", wizard.preview_source.text())
+            wizard.trip_type.setCurrentIndex(1)
+            wizard._update_capability()
+            self.assertTrue(wizard.provider.model().item(wizard.provider.findData("ctrip")).isEnabled())
+            wizard.provider.setCurrentIndex(wizard.provider.findData("ctrip"))
+            wizard._load_route(wizard._build_route())
+            self.assertEqual(wizard.trip_type.currentIndex(), 1)
+            self.assertEqual(wizard.provider.currentData(), "ctrip")
+            wizard.destination_picker.set_record(wizard.catalog.by_iata("SYX"))
+            wizard._update_capability()
+            self.assertEqual(wizard.provider.currentData(), "auto")
+            self.assertIn("同程", wizard.preview_source.text())
+            wizard.close()
 
     def test_route_wizard_includes_brand_motto(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

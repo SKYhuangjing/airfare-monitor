@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
 from ..config import MAX_ENABLED_LEGS
 from ..desktop_app.view_data import DashboardData
 from ..desktop_app.route_repository import is_route_expired
-from ..market import resolve_market
+from ..market import resolve_market, source_label
 from ..models import LegConfig
 from .aircraft_assets import aircraft_mark_pixmap
 from .support import SupportPromptState
@@ -245,7 +245,7 @@ class DashboardPage(QWidget):
             dates = route.departure_date.isoformat()
             if route.return_date:
                 dates += f" ~ {route.return_date.isoformat()}"
-            source = "国内 · 同程" if _market(route) == "domestic" else "国际/跨境 · 去哪儿"
+            source = source_label(route)
             route_copy.addWidget(QLabel(
                 f"{route.origin_name_zh or route.origin_airport_iata} → {route.destination_name_zh or route.destination_airport_iata}  ·  {dates}  ·  {source}",
                 objectName="routeMeta", wordWrap=True,

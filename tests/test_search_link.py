@@ -48,13 +48,21 @@ class SearchLinkTests(unittest.TestCase):
     def tearDown(self):
         self._temporary.cleanup()
 
-    def test_international_oneway_uses_qunar(self):
+    def test_international_oneway_uses_ctrip_by_default(self):
         url = search_url_for(_leg(), self.settings)
+        self.assertIn("flights.ctrip.com/online/list/oneway-sha-tyo", url)
+        self.assertIn("depdate=2026-10-02", url)
+        self.assertIn("adult=2", url)
+        self.assertEqual(search_site_label(_leg()), "携程")
+
+    def test_international_oneway_uses_qunar_when_explicit(self):
+        leg = _leg(provider="qunar")
+        url = search_url_for(leg, self.settings)
         self.assertIn("flight.qunar.com/site/oneway_list_inter.htm", url)
         self.assertIn("fromCode=SHA", url)
         self.assertIn("toCode=TYO", url)
         self.assertIn("adultNum=2", url)
-        self.assertEqual(search_site_label(_leg()), "去哪儿")
+        self.assertEqual(search_site_label(leg), "去哪儿")
 
     def test_domestic_oneway_uses_tongcheng(self):
         leg = _leg(
@@ -68,8 +76,15 @@ class SearchLinkTests(unittest.TestCase):
         self.assertIn("date=2026-10-02", url)
         self.assertEqual(search_site_label(leg), "同程")
 
-    def test_international_roundtrip_uses_qunar_roundtrip(self):
+    def test_international_roundtrip_uses_ctrip_by_default(self):
         leg = _leg(return_date=date(2026, 12, 1))
+        url = search_url_for(leg, self.settings)
+        self.assertIn("flights.ctrip.com/online/list/round-sha-tyo", url)
+        self.assertIn("depdate=2026-10-02_2026-12-01", url)
+        self.assertIn("isbuildup=1", url)
+
+    def test_international_roundtrip_uses_qunar_when_explicit(self):
+        leg = _leg(return_date=date(2026, 12, 1), provider="qunar")
         url = search_url_for(leg, self.settings)
         self.assertIn("flight.qunar.com/site/interroundtrip_compare.htm", url)
         self.assertIn("fromDate=2026-10-02", url)
@@ -93,7 +108,7 @@ class CliOpenTests(unittest.TestCase):
         self.assertEqual(code, 0)
         text = "\n".join(str(call.args[0]) for call in printer.call_args_list)
         self.assertIn("sha-tyo", text)
-        self.assertIn("去哪儿", text)
+        self.assertIn("携程", text)
         self.assertIn("同程", text)
 
     def test_open_unknown_id_fails_fast(self):
@@ -106,8 +121,7 @@ class CliOpenTests(unittest.TestCase):
                 code = _open_route(self.legs, self.settings, "sha-tyo")
         self.assertEqual(code, 0)
         (url,), _ = opener.call_args
-        self.assertIn("flight.qunar.com/site/oneway_list_inter.htm", url)
-        self.assertIn("fromCode=SHA", url)
+        self.assertIn("flights.ctrip.com/online/list/oneway-sha-tyo", url)
 
 
 if __name__ == "__main__":

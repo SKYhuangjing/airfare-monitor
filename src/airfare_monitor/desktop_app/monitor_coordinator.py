@@ -11,19 +11,16 @@ from datetime import datetime, timedelta
 from typing import Protocol
 
 from ..app_paths import AppPaths
-from ..config import AppSettings, load_routes, load_settings
+from ..config import AppSettings, load_routes
 from ..models import LegConfig, LegResult, RunReport
 from ..scheduler import AlreadyRunningError, ProcessLock
 from ..service import MonitorEventSink, MonitorService
-from ..collector import (
-    QunarBrowserSession, build_search_url, build_tongcheng_search_url,
-    build_roundtrip_search_url,
-)
-from ..market import resolve_market
+from ..collector import QunarBrowserSession, build_provider_search_url
 from ..mail import send_report_with_credentials
 from .credential_store import CredentialStore, CredentialStoreError
 from .mail_profile import MailProfileRepository
 from .route_repository import RouteRepository, is_route_expired
+from .settings_repository import SettingsRepository
 from .events import (
     CoordinatorSnapshot,
     CoordinatorStateChanged,
@@ -272,22 +269,22 @@ class MonitorCoordinator:
             leg = next((item for item in legs if item.id == leg_id), None)
             if leg is None:
                 raise ValueError("受影响航程已不存在")
-            settings = load_settings(self.paths.settings_path, project_root=self.paths.user_root)
+            settings = SettingsRepository(self.paths.settings_path, user_root=self.paths.user_root).load_core()
             # 人工确认浏览器与采集浏览器共用隔离 Profile（在同一 Profile 上完成
             # 验证码才能真正解除自动化侧的拦截），但使用相邻端口：共用端口时，
             # 用户正在解验证码的可见窗口会与下一轮无头采集产生 headless 状态
             # 冲突，触发 DrissionPage 的浏览器强杀/关闭路径。
             session = QunarBrowserSession(
-                replace(settings.browser, headless=False, local_port=settings.browser.local_port + 1)
+                replace(
+                    settings.browser,
+                    headless=False,
+                    background=False,
+                    local_port=settings.browser.local_port + 1,
+                )
             )
             session.start()
             assert session.tab is not None
-            if resolve_market(leg) == "domestic":
-                url = build_tongcheng_search_url(settings.browser.tongcheng_search_url_template, leg)
-            elif leg.is_round_trip:
-                url = build_roundtrip_search_url(settings.browser.roundtrip_search_url_template, leg)
-            else:
-                url = build_search_url(settings.browser.search_url_template, leg)
+            url = build_provider_search_url(settings.browser, leg)
             try:
                 session.tab.get(url, timeout=settings.browser.page_load_timeout_seconds)
             except Exception:
@@ -348,7 +345,7 @@ class MonitorCoordinator:
                 self._set_state("IDLE", message)
                 return
 
-            settings = load_settings(self.paths.settings_path, project_root=self.paths.user_root)
+            settings = SettingsRepository(self.paths.settings_path, user_root=self.paths.user_root).load_core()
             mail_profile = MailProfileRepository(
                 self.paths.settings_path, user_root=self.paths.user_root
             ).load()

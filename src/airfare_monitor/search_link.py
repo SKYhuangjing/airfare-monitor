@@ -6,7 +6,7 @@ from urllib.parse import quote
 
 from .config import AppSettings
 from .errors import CollectionError
-from .market import resolve_market
+from .market import resolve_market, resolve_provider
 from .models import LegConfig
 
 # 去哪儿单程模板在默认配置里是「落地页」（采集器靠页面内表单交互选择航线），
@@ -22,17 +22,19 @@ _QUNAR_ONEWAY_PARAMS = (
 def search_url_for(leg: LegConfig, settings: AppSettings) -> str:
     """返回该航程在来源网站的搜索结果页链接。
 
-    分支与采集器 collect() 完全一致：国内单程 → 同程；跨境/国际单程 →
-    去哪儿；往返（仅国际）→ 去哪儿往返比对页。
+    分支与采集器 collect() 完全一致：国内单程 → 同程；国际 → 携程（或去哪儿）；往返 → 携程（或去哪儿往返比对页）。
     """
     from .collector import build_roundtrip_search_url, build_search_url, build_tongcheng_search_url
+    from .ctrip_search import build_ctrip_search_url
 
-    market = resolve_market(leg)
+    provider = resolve_provider(leg)
+    if provider == "ctrip":
+        return build_ctrip_search_url(leg)
     if leg.is_round_trip:
-        if market == "domestic":
-            raise CollectionError("往返合计价目前只支持去哪儿跨境/国际航线")
+        if resolve_market(leg) == "domestic":
+            raise CollectionError("往返合计价目前只支持跨境/国际航线")
         return build_roundtrip_search_url(settings.browser.roundtrip_search_url_template, leg)
-    if market == "domestic":
+    if provider == "tongcheng":
         return build_tongcheng_search_url(settings.browser.tongcheng_search_url_template, leg)
     url = build_search_url(settings.browser.search_url_template, leg)
     if "?" not in url:
@@ -51,5 +53,10 @@ def search_url_for(leg: LegConfig, settings: AppSettings) -> str:
 
 
 def search_site_label(leg: LegConfig) -> str:
-    """按钮/文案用的来源名称：同程 或 去哪儿。"""
-    return "同程" if resolve_market(leg) == "domestic" else "去哪儿"
+    """按钮/文案用的来源名称：同程、去哪儿 或 携程。"""
+    try:
+        provider = resolve_provider(leg)
+    except Exception:
+        return "去哪儿"
+    return {"tongcheng": "同程", "qunar": "去哪儿", "ctrip": "携程"}.get(provider, "携程")
+

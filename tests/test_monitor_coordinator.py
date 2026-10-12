@@ -71,7 +71,8 @@ class MonitorCoordinatorTests(unittest.TestCase):
                 created.append(service)
                 return service
 
-            coordinator = MonitorCoordinator(paths, service_factory=factory, jitter=lambda low, high: 0)
+            coordinator = MonitorCoordinator(paths, service_factory=factory, jitter=lambda low, high: 0,
+                                             now=lambda: datetime(2026, 9, 10, 10))
 
             def receive(event: object) -> None:
                 events.append(event)

@@ -12,7 +12,7 @@ import airportsdata
 
 _IATA = re.compile(r"^[A-Z]{3}$")
 _DISALLOWED_CITY_CODES = {"BJS", "NYC", "LON", "TYO"}
-_SOURCES = {"tongcheng", "qunar"}
+_SOURCES = {"tongcheng", "qunar", "ctrip"}
 
 
 class AirportCatalogError(ValueError):

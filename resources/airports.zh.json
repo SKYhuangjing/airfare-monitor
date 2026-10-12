@@ -1,6 +1,6 @@
 {
-  "catalog_version": 1,
-  "updated_at": "2026-09-30",
+  "catalog_version": 2,
+  "updated_at": "2026-10-12",
   "airports": [
     {
       "airport_iata": "PEK",
@@ -18,7 +18,8 @@
       ],
       "supported_sources": [
         "tongcheng",
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -39,7 +40,8 @@
       ],
       "supported_sources": [
         "tongcheng",
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -61,7 +63,8 @@
       ],
       "supported_sources": [
         "tongcheng",
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -83,7 +86,8 @@
       ],
       "supported_sources": [
         "tongcheng",
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -105,7 +109,8 @@
       ],
       "supported_sources": [
         "tongcheng",
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -127,7 +132,8 @@
       ],
       "supported_sources": [
         "tongcheng",
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -149,7 +155,8 @@
       ],
       "supported_sources": [
         "tongcheng",
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -171,7 +178,8 @@
       ],
       "supported_sources": [
         "tongcheng",
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -193,7 +201,8 @@
       ],
       "supported_sources": [
         "tongcheng",
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -215,7 +224,8 @@
       ],
       "supported_sources": [
         "tongcheng",
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -237,7 +247,8 @@
       ],
       "supported_sources": [
         "tongcheng",
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -259,7 +270,8 @@
       ],
       "supported_sources": [
         "tongcheng",
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -281,7 +293,8 @@
       ],
       "supported_sources": [
         "tongcheng",
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -303,7 +316,8 @@
       ],
       "supported_sources": [
         "tongcheng",
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -325,7 +339,8 @@
       ],
       "supported_sources": [
         "tongcheng",
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -347,7 +362,8 @@
       ],
       "supported_sources": [
         "tongcheng",
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -369,7 +385,8 @@
       ],
       "supported_sources": [
         "tongcheng",
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -391,7 +408,8 @@
       ],
       "supported_sources": [
         "tongcheng",
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -413,7 +431,8 @@
       ],
       "supported_sources": [
         "tongcheng",
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -435,7 +454,8 @@
       ],
       "supported_sources": [
         "tongcheng",
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -457,7 +477,8 @@
       ],
       "supported_sources": [
         "tongcheng",
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -479,7 +500,8 @@
       ],
       "supported_sources": [
         "tongcheng",
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -501,7 +523,8 @@
       ],
       "supported_sources": [
         "tongcheng",
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -523,7 +546,8 @@
       ],
       "supported_sources": [
         "tongcheng",
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -545,7 +569,8 @@
       ],
       "supported_sources": [
         "tongcheng",
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -564,7 +589,8 @@
         "hk"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -582,7 +608,8 @@
         "mfm"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -602,7 +629,8 @@
         "tpe"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -622,7 +650,8 @@
         "tsa"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -640,7 +669,8 @@
         "khh"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -660,7 +690,8 @@
         "hnd"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -680,7 +711,8 @@
         "nrt"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -700,7 +732,8 @@
         "kix"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -721,7 +754,8 @@
         "cts"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -741,7 +775,8 @@
         "icn"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -761,7 +796,28 @@
         "gmp"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
+      ],
+      "verified_at": null,
+      "enabled": true
+    },
+    {
+      "airport_iata": "CJU",
+      "display_name_zh": "济州",
+      "city_name_zh": "济州",
+      "airport_name_zh": "济州国际机场",
+      "display_name_en": "Jeju International Airport",
+      "country_code": "KR",
+      "aliases": [
+        "济州",
+        "济州岛",
+        "jeju",
+        "cju"
+      ],
+      "supported_sources": [
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -781,7 +837,8 @@
         "sin"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -799,7 +856,8 @@
         "kul"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -819,7 +877,8 @@
         "bkk"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -839,7 +898,8 @@
         "dmk"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -857,7 +917,8 @@
         "hkt"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -875,7 +936,8 @@
         "dps"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -893,7 +955,8 @@
         "cgk"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -911,7 +974,8 @@
         "mnl"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -931,7 +995,8 @@
         "sgn"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -949,7 +1014,8 @@
         "han"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -969,7 +1035,8 @@
         "mle"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -987,7 +1054,8 @@
         "dxb"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -1005,7 +1073,8 @@
         "doh"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -1025,7 +1094,8 @@
         "lhr"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -1045,7 +1115,8 @@
         "cdg"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -1064,7 +1135,8 @@
         "ams"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -1082,7 +1154,8 @@
         "fra"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -1100,7 +1173,8 @@
         "ist"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -1119,7 +1193,8 @@
         "jfk"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -1137,7 +1212,8 @@
         "lax"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -1155,7 +1231,8 @@
         "sfo"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -1173,7 +1250,8 @@
         "yvr"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -1193,7 +1271,8 @@
         "yyz"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -1211,7 +1290,8 @@
         "syd"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -1229,7 +1309,8 @@
         "mel"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -1247,7 +1328,8 @@
         "akl"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "verified_at": null,
       "enabled": true
@@ -1275,7 +1357,8 @@
       ],
       "supported_sources": [
         "tongcheng",
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "enabled": true
     },
@@ -1300,7 +1383,8 @@
       ],
       "supported_sources": [
         "tongcheng",
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "enabled": true
     },
@@ -1325,7 +1409,8 @@
       ],
       "supported_sources": [
         "tongcheng",
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "enabled": true
     },
@@ -1349,7 +1434,8 @@
         "all"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "enabled": true
     },
@@ -1373,7 +1459,8 @@
         "all"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "enabled": true
     },
@@ -1397,7 +1484,8 @@
         "all"
       ],
       "supported_sources": [
-        "qunar"
+        "qunar",
+        "ctrip"
       ],
       "enabled": true
     }

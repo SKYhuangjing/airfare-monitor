@@ -85,6 +85,7 @@ class LegConfig:
     return_etd_window: EtdWindow | None = None
     return_direct_only: bool | None = None
     return_max_layover_minutes: int | None = None
+    provider: str = "auto"
     origin_airports: tuple[str, ...] | None = None
     destination_airports: tuple[str, ...] | None = None
 
