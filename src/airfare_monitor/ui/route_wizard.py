@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 from datetime import date, time
 from decimal import Decimal, InvalidOperation
 
@@ -8,13 +9,13 @@ from PySide6.QtCore import QDate, QPoint, QTime, Qt
 from PySide6.QtGui import QColor, QPainter, QPolygon
 from PySide6.QtWidgets import (
     QAbstractSpinBox, QCalendarWidget, QCheckBox, QComboBox, QDateEdit, QDialog,
-    QFormLayout, QFrame, QGridLayout, QHBoxLayout, QLabel,
-    QLineEdit, QMessageBox, QPushButton, QSpinBox, QStackedWidget, QVBoxLayout, QWidget,
+    QFormLayout, QFrame, QGridLayout, QHBoxLayout, QLabel, QLayout,
+    QLineEdit, QMessageBox, QPushButton, QScrollArea, QSpinBox, QStackedWidget, QVBoxLayout, QWidget,
 )
 
 from ..desktop_app.airport_catalog import AirportCatalog, AirportRecord
 from ..desktop_app.controller import DesktopController
-from ..market import resolve_market
+from ..market import resolve_market, source_label
 from ..models import EtdWindow, LegConfig, PreferredSchedule
 from .widgets.airport_picker import AirportPicker
 from .dashboard_page import _icon_label
@@ -193,6 +194,7 @@ class RouteWizard(QDialog):
         self.origin_picker.selected_changed.connect(self._update_capability)
         self.destination_picker.selected_changed.connect(self._update_capability)
         self.trip_type.currentIndexChanged.connect(self._update_capability)
+        self.provider.currentIndexChanged.connect(self._update_preview)
         self.direct_only.toggled.connect(self._update_layover)
         self._load_route(route)
         self._update_step()
@@ -202,6 +204,10 @@ class RouteWizard(QDialog):
         self.destination_picker = AirportPicker(self.catalog)
         self.trip_type = ArrowComboBox()
         self.trip_type.addItems(["单程", "往返"])
+        self.provider = ArrowComboBox()
+        for label, value in (("自动匹配", "auto"), ("携程（国际单程/往返）", "ctrip"),
+                             ("去哪儿（兼容来源）", "qunar"), ("同程（国内）", "tongcheng")):
+            self.provider.addItem(label, value)
         self.departure_date = QDateEdit()
         self.departure_date.setMinimumDate(QDate.currentDate())
         self.departure_date.setDate(QDate.currentDate().addDays(1))
@@ -263,6 +269,7 @@ class RouteWizard(QDialog):
         body.setSpacing(15)
         fields_card = QFrame(objectName="card")
         fields_layout = QVBoxLayout(fields_card)
+        fields_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         fields_layout.setContentsMargins(20, 19, 20, 19)
         fields_layout.addWidget(QLabel("航线与日期", objectName="sectionTitle"))
         fields_layout.addWidget(QLabel("从内置机场目录选择具体机场，来源会自动匹配。", objectName="muted"))
@@ -274,6 +281,7 @@ class RouteWizard(QDialog):
         form.addRow("", swap)
         form.addRow("到哪里", self.destination_picker)
         form.addRow("航程类型", self.trip_type)
+        form.addRow("查询来源", self.provider)
         self.domestic_roundtrip_hint = QLabel(objectName="domesticTripHint", wordWrap=True)
         self.domestic_roundtrip_hint.hide()
         form.addRow("", self.domestic_roundtrip_hint)
@@ -295,7 +303,13 @@ class RouteWizard(QDialog):
         form.addRow(self.return_window_label, self.return_window_widget)
         fields_layout.addLayout(form)
         fields_layout.addStretch()
-        body.addWidget(fields_card, 3)
+        # Round-trip dates and source selection exceed the small-window height.
+        # Preserve usable control sizes and let this column scroll independently.
+        self.route_fields_scroll = QScrollArea()
+        self.route_fields_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.route_fields_scroll.setWidgetResizable(True)
+        self.route_fields_scroll.setWidget(fields_card)
+        body.addWidget(self.route_fields_scroll, 3)
         preview = QFrame(objectName="wizardPreview")
         preview_layout = QVBoxLayout(preview)
         preview_layout.setContentsMargins(18, 19, 18, 19)
@@ -418,6 +432,7 @@ class RouteWizard(QDialog):
         self.child_count.setValue(route.child_count)
         cabin_index = self.cabin_class.findData(route.cabin_class)
         self.cabin_class.setCurrentIndex(max(0, cabin_index))
+        self.provider.setCurrentIndex(max(0, self.provider.findData(route.provider)))
         if route.return_date and route.return_etd_window:
             self.return_date.setDate(_qdate(route.return_date))
             self.return_start_time.setTime(_qtime(route.return_etd_window.start))
@@ -465,6 +480,13 @@ class RouteWizard(QDialog):
             self.domestic_roundtrip_hint.hide()
             self.trip_type.setToolTip("")
         roundtrip = self.trip_type.currentIndex() == 1
+        for index in range(1, self.provider.count()):
+            value = self.provider.itemData(index)
+            allowed = value == "tongcheng" if domestic else value in {"qunar", "ctrip"}
+            self.provider.model().item(index).setEnabled(allowed)
+        if not self.provider.model().item(self.provider.currentIndex()).isEnabled():
+            self.provider.setCurrentIndex(0)
+        self.provider.setToolTip("自动：国内单程走同程，国际单程及往返组合走携程；可手动选择去哪儿兼容来源。")
         self.return_date_label.setVisible(roundtrip)
         self.return_date_field.setVisible(roundtrip)
         self.return_window_label.setVisible(roundtrip)
@@ -491,7 +513,12 @@ class RouteWizard(QDialog):
                 domestic = resolve_market(_draft_leg(origin, destination)) == "domestic"
             except ValueError:
                 domestic = False
-            self.preview_source.setText("国内 · 同程" if domestic else "国际/跨境 · 去哪儿")
+            draft = replace(_draft_leg(origin, destination), provider=str(self.provider.currentData()),
+                            return_date=self.return_date.date().toPython() if self.trip_type.currentIndex() else None)
+            try:
+                self.preview_source.setText(source_label(draft))
+            except ValueError:
+                self.preview_source.setText("请选择当前航程支持的来源")
         else:
             self.preview_source.setText("选择机场后自动匹配来源")
 
@@ -593,7 +620,7 @@ class RouteWizard(QDialog):
         destination = self.destination_picker.selected
         assert origin and destination
         market = resolve_market(_draft_leg(origin, destination))
-        source = "同程（国内）" if market == "domestic" else "去哪儿（国际/跨境）"
+        source = source_label(self._build_route())
         kind = "往返" if self.trip_type.currentIndex() else "单程"
         return_hint = (
             f"<p style='color:#9a5a0d'>如需返程，请另建一条 "
@@ -605,7 +632,7 @@ class RouteWizard(QDialog):
             f"<p>{origin.city_name_zh} → {destination.city_name_zh} · {kind}</p>"
             f"<p>出发：{self.departure_date.date().toString('yyyy-MM-dd')} · "
             f"{self.start_time.time().toString('HH:mm')}–{self.end_time.time().toString('HH:mm')}</p>"
-            f"<p>来源自动匹配：<b>{source}</b></p>"
+            f"<p>查询来源：<b>{source}</b></p>"
             f"{return_hint}"
             "<p>下一步请选择立即开始监控，或仅保存为暂停。</p>"
         )
@@ -655,6 +682,7 @@ class RouteWizard(QDialog):
             destination_name_zh=destination.city_name_zh,
             preferred_schedules=preferred,
             market="auto",
+            provider=str(self.provider.currentData()),
             max_layover_minutes=None if direct else self.max_layover.value(),
             return_date=return_date,
             return_etd_window=EtdWindow(self.return_start_time.time().toPython(), self.return_end_time.time().toPython()) if return_date else None,

@@ -11,10 +11,29 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from .models import LegResult, PreferredPriceReference, RunReport
+from .models import LegConfig, LegResult, PreferredPriceReference, RunReport
+from .market import resolve_provider
+from .errors import CollectionError
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+
+
+def _history_scope(provider: str | None, leg: LegConfig | None, alias: str = "") -> tuple[str, list[Any]]:
+    """Keep price baselines within the same platform, airport pair and travel dates."""
+    conditions: list[str] = []
+    params: list[Any] = []
+    prefix = f"{alias}." if alias else ""
+    if provider is not None:
+        conditions.append(f"{prefix}collection_provider = ?")
+        params.append(provider)
+    if leg is not None:
+        conditions.extend(f"{prefix}{column} {operator} ?" for column, operator in (
+            ("origin_airport_iata", "="), ("destination_airport_iata", "="),
+            ("departure_date", "="), ("return_date", "IS")))
+        params.extend([leg.origin_airport_iata, leg.destination_airport_iata,
+                       leg.departure_date.isoformat(), leg.return_date.isoformat() if leg.return_date else None])
+    return "".join(f" AND {condition}" for condition in conditions), params
 
 
 SCHEMA = """
@@ -51,6 +70,7 @@ CREATE TABLE IF NOT EXISTS leg_results (
     captured_at TEXT NOT NULL,
     error_category TEXT,
     error_message TEXT,
+    collection_provider TEXT NOT NULL DEFAULT 'unknown',
     PRIMARY KEY (run_id, leg_id)
 );
 
@@ -259,19 +279,25 @@ class SQLiteStore:
                     "ALTER TABLE flight_snapshots ADD COLUMN outbound_seat_availability_json TEXT"
                 )
             leg_columns = {row[1] for row in connection.execute("PRAGMA table_info(leg_results)")}
+            if "collection_provider" not in leg_columns:
+                connection.execute("ALTER TABLE leg_results ADD COLUMN collection_provider TEXT NOT NULL DEFAULT 'unknown'")
             for name in ("return_date", "return_etd_window_start", "return_etd_window_end"):
                 if name not in leg_columns:
                     connection.execute(f"ALTER TABLE leg_results ADD COLUMN {name} TEXT")
             connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
             connection.commit()
 
-    def previous_minimum(self, leg_id: str, *, before: datetime | None = None) -> Decimal | None:
+    def previous_minimum(self, leg_id: str, *, before: datetime | None = None, provider: str | None = None,
+                         leg: LegConfig | None = None) -> Decimal | None:
         sql = """
             SELECT minimum_total_price_cny
             FROM leg_results
             WHERE leg_id = ? AND status = 'success' AND minimum_total_price_cny IS NOT NULL
         """
         params: list[Any] = [leg_id]
+        scope, scope_params = _history_scope(provider, leg)
+        sql += scope
+        params.extend(scope_params)
         if before is not None:
             sql += " AND captured_at < ?"
             params.append(_iso(before))
@@ -281,7 +307,8 @@ class SQLiteStore:
         return Decimal(row[0]) if row else None
 
     def preferred_price_reference(
-        self, leg_id: str, preference_key: str, *, before: datetime | None = None
+        self, leg_id: str, preference_key: str, *, before: datetime | None = None, provider: str | None = None,
+        leg: LegConfig | None = None
     ) -> PreferredPriceReference:
         sql = """
             SELECT total_price_cny, captured_at
@@ -289,6 +316,10 @@ class SQLiteStore:
             WHERE leg_id = ? AND preference_key = ? AND total_price_cny IS NOT NULL
         """
         params: list[Any] = [leg_id, preference_key]
+        if provider is not None or leg is not None:
+            scope, scope_params = _history_scope(provider, leg, "lr")
+            sql += " AND EXISTS (SELECT 1 FROM leg_results lr WHERE lr.run_id = preferred_schedule_prices.run_id AND lr.leg_id = preferred_schedule_prices.leg_id" + scope + ")"
+            params.extend(scope_params)
         if before is not None:
             sql += " AND captured_at < ?"
             params.append(_iso(before))
@@ -303,7 +334,8 @@ class SQLiteStore:
         )
 
     def flight_price_reference(
-        self, leg_id: str, flight_signature: str, *, before: datetime | None = None
+        self, leg_id: str, flight_signature: str, *, before: datetime | None = None, provider: str | None = None,
+        leg: LegConfig | None = None
     ) -> PreferredPriceReference:
         """Return the first and latest prior price for the same complete itinerary."""
         sql = """
@@ -312,6 +344,10 @@ class SQLiteStore:
             WHERE leg_id = ? AND flight_signature = ?
         """
         params: list[Any] = [leg_id, flight_signature]
+        if provider is not None or leg is not None:
+            scope, scope_params = _history_scope(provider, leg, "lr")
+            sql += " AND EXISTS (SELECT 1 FROM leg_results lr WHERE lr.run_id = flight_snapshots.run_id AND lr.leg_id = flight_snapshots.leg_id" + scope + ")"
+            params.extend(scope_params)
         if before is not None:
             sql += " AND captured_at < ?"
             params.append(_iso(before))
@@ -352,6 +388,10 @@ class SQLiteStore:
         self, connection: sqlite3.Connection, run_id: str, result: LegResult, threshold_confirmed: bool
     ) -> None:
         leg = result.leg
+        try:
+            provider = resolve_provider(leg)
+        except CollectionError:
+            provider = "unknown"
         connection.execute(
             """INSERT INTO leg_results (
                 run_id, leg_id, origin_airport_iata, destination_airport_iata,
@@ -360,8 +400,8 @@ class SQLiteStore:
                 expected_total_price_cny, status, completed_response,
                 observed_count, eligible_count, minimum_total_price_cny,
                 previous_min_total_cny, threshold_hit, threshold_confirmed,
-                captured_at, error_category, error_message
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                captured_at, error_category, error_message, collection_provider
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 run_id,
                 leg.id,
@@ -385,6 +425,7 @@ class SQLiteStore:
                 _iso(result.captured_at),
                 result.error_category,
                 result.error_message,
+                provider,
             ),
         )
         stored_candidates = result.candidate_flights or result.flights

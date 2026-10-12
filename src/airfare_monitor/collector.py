@@ -11,7 +11,9 @@ from urllib.parse import quote
 
 from .config import BrowserSettings, MAX_STORED_CANDIDATES
 from .errors import CollectionError, IncompleteResponseError, ManualAttentionRequired
-from .market import resolve_market
+from .market import resolve_market, resolve_provider
+from .ctrip_search import CtripSearchCapture, SEARCH_PREFIX, build_ctrip_search_url
+from .ctrip_parser import parse_ctrip_payload
 from .models import LegConfig, LegResult, LegStatus
 from .parser import is_completed_payload, parse_completed_payload
 from .tongcheng_parser import is_completed_tongcheng_page_state, parse_tongcheng_page_state
@@ -89,8 +91,19 @@ def _response_body(packet: Any) -> dict[str, Any] | None:
     return None
 
 
+def build_provider_search_url(settings: BrowserSettings, leg: LegConfig) -> str:
+    provider = resolve_provider(leg)
+    if provider == "ctrip":
+        return build_ctrip_search_url(leg)
+    if provider == "tongcheng":
+        return build_tongcheng_search_url(settings.tongcheng_search_url_template, leg)
+    if leg.is_round_trip:
+        return build_roundtrip_search_url(settings.roundtrip_search_url_template, leg)
+    return build_search_url(settings.search_url_template, leg)
+
+
 class QunarBrowserSession:
-    """Own one Chromium instance and select Qunar or Tongcheng per route."""
+    """Own one isolated Chromium instance and select a provider per route."""
 
     def __init__(self, settings: BrowserSettings):
         self.settings = settings
@@ -140,7 +153,7 @@ class QunarBrowserSession:
             for value in (
                 getattr(self.tab, "url", ""),
                 getattr(self.tab, "title", ""),
-                getattr(body, "text", "") if body is not None else "",
+                getattr(body, "text", "") if body else "",
             )
         ).lower()
         return any(marker.lower() in sample for marker in _VERIFICATION_MARKERS)
@@ -332,17 +345,110 @@ class QunarBrowserSession:
             )
         raise IncompleteResponseError(f"等待同程最终页面状态超时{state_summary}")
 
+    def _collect_ctrip(self, leg: LegConfig, captured_at: datetime) -> LegResult:
+        assert self.tab is not None
+        self.tab.listen.start(SEARCH_PREFIX, method="POST")
+        if leg.is_round_trip:
+            self._configure_ctrip_round_trip_listener()
+        self.tab.get(build_ctrip_search_url(leg), timeout=self.settings.page_load_timeout_seconds)
+        deadline = time.monotonic() + self.settings.search_completion_timeout_seconds
+        criteria = None
+        while time.monotonic() < deadline:
+            # Read only search identity and normalized city codes; never export global config,
+            # cookies, headers or security tokens from the browser.
+            criteria = self.tab.run_js(
+                "const c=window.GlobalSearchCriteria,s=c?.flightSegments?.[0],r=c?.flightSegments?.[1];"
+                "return c&&s?{transactionID:c.transactionID,departureCityCode:s.departureCityCode,"
+                "arrivalCityCode:s.arrivalCityCode,departureDate:s.departureDate,"
+                "returnSegment:r?{departureCityCode:r.departureCityCode,arrivalCityCode:r.arrivalCityCode,"
+                "departureDate:r.departureDate}:null}:null;")
+            if isinstance(criteria, dict) and isinstance(criteria.get("transactionID"), str) and criteria["transactionID"]:
+                break
+            if self._verification_visible():
+                raise ManualAttentionRequired("携程页面需要人工验证")
+            time.sleep(0.2)
+        if not isinstance(criteria, dict) or not criteria.get("transactionID"):
+            raise IncompleteResponseError("等待携程页面搜索标识超时")
+        if criteria.get("departureDate") != leg.departure_date.isoformat():
+            raise CollectionError("携程页面搜索日期与航程配置不一致")
+        city_pair = (criteria.get("departureCityCode"), criteria.get("arrivalCityCode"))
+        if not all(isinstance(code, str) and len(code) == 3 and code.isascii() and code.isalpha() for code in city_pair):
+            raise CollectionError("携程页面缺少有效的搜索城市代码")
+        if leg.return_date is not None:
+            inbound = criteria.get("returnSegment")
+            if (not isinstance(inbound, dict) or inbound.get("departureDate") != leg.return_date.isoformat()
+                    or inbound.get("departureCityCode") != city_pair[1] or inbound.get("arrivalCityCode") != city_pair[0]):
+                raise CollectionError("携程页面返程航线或日期与航程配置不一致")
+        # Ctrip normalizes airport URLs to cities (e.g. NRT -> TYO). Bind the
+        # request to this page's cities; the parser still enforces actual airports.
+        capture = CtripSearchCapture(leg, criteria["transactionID"], city_pair=city_pair)
+        while time.monotonic() < deadline:
+            packet = self.tab.listen.wait(timeout=min(1, max(0.01, deadline - time.monotonic())), raise_err=False)
+            if not packet:
+                if self._verification_visible():
+                    raise ManualAttentionRequired("携程页面需要人工验证")
+                continue
+            response = getattr(packet, "response", None)
+            request = getattr(getattr(packet, "request", None), "postData", None)
+            if isinstance(request, str):
+                try:
+                    request = json.loads(request)
+                except ValueError:
+                    continue
+            final = capture.accept(str(getattr(packet, "url", "")), request, _response_body(packet),
+                                   http_status=getattr(response, "status", None))
+            if final is None:
+                continue
+            ranked, preferred, observed, eligible = parse_ctrip_payload(final, _candidate_leg(leg), captured_at)
+            return LegResult(
+                leg=leg, status=LegStatus.SUCCESS, captured_at=captured_at,
+                flights=ranked[:leg.top_n], candidate_flights=ranked[:MAX_STORED_CANDIDATES],
+                preferred_matches=preferred, completed_response=True,
+                observed_count=observed, eligible_count=eligible,
+                raw_response={"provider": "ctrip", "context": {"finished": True},
+                              "round_trip": leg.is_round_trip,
+                              "observed_count": observed, "eligible_count": eligible},
+            )
+        raise IncompleteResponseError("等待携程 data.context.finished == true 超时")
+
+    def _configure_ctrip_round_trip_listener(self) -> None:
+        """Configure the listener's CDP session, which differs from tab.run_cdp.
+
+        DrissionPage 4.x exposes no public buffer setter. Keep this one internal
+        access contained here, and fail explicitly if its driver API changes.
+        """
+        driver = getattr(self.tab.listen, "_driver", None)
+        if driver is None or not callable(getattr(driver, "run", None)):
+            raise CollectionError("浏览器监听器不支持往返大响应缓存，请检查 DrissionPage 4.x")
+        try:
+            result = driver.run("Network.enable", maxTotalBufferSize=128 * 1024 * 1024,
+                                maxResourceBufferSize=64 * 1024 * 1024)
+        except Exception as exc:
+            raise CollectionError("配置携程往返搜索响应缓存失败") from exc
+        if isinstance(result, dict) and "error" in result:
+            raise CollectionError("配置携程往返搜索响应缓存失败")
+
+    def search_url(self, leg: LegConfig) -> str:
+        return build_provider_search_url(self.settings, leg)
+
     def collect(self, leg: LegConfig, now: Callable[[], datetime] = datetime.now) -> LegResult:
         self.start()
         assert self.tab is not None
         captured_at = now()
         try:
-            market = resolve_market(leg)
+            provider = resolve_provider(leg)
+            if provider == "ctrip":
+                try:
+                    return self._collect_ctrip(leg, captured_at)
+                except CollectionError:
+                    raise
+                except Exception as exc:
+                    raise CollectionError("携程页面或响应读取失败，请检查独立浏览器") from exc
             if leg.is_round_trip:
-                if market == "domestic":
-                    raise CollectionError("往返合计价采集目前只支持去哪儿跨境/国际航线")
+                if resolve_market(leg) == "domestic":
+                    raise CollectionError("往返合计价采集目前只支持跨境/国际航线")
                 return self._collect_qunar_round_trip(leg, captured_at)
-            if market == "domestic":
+            if provider == "tongcheng":
                 return self._collect_tongcheng(leg, captured_at)
             return self._collect_qunar(leg, captured_at)
         finally:

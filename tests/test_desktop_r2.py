@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import unittest
 from dataclasses import replace
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -105,7 +105,7 @@ class DesktopR2Tests(unittest.TestCase):
             controller = DesktopController(RouteRepository(paths.routes_path))
             catalog = AirportCatalog.load(paths.resource_root / "airports.zh.json")
             page = RoutesPage(controller, catalog)
-            page.refresh([_route("route-1")])
+            page.refresh([replace(_route("route-1"), departure_date=date.today() + timedelta(days=1))])
             self.assertEqual(page.capacity.text(), "已启用 1 / 10 个航程")
             self.assertEqual(page.capacity_bar.value(), 1)
             self.assertEqual(len(page.cards), 1)
@@ -119,7 +119,7 @@ class DesktopR2Tests(unittest.TestCase):
             labels = {label.text() for label in page.cards[0].findChildren(QLabel)}
             self.assertIn("PVG", labels)
             self.assertIn("KUL", labels)
-            self.assertIn("国际/跨境 · 去哪儿", labels)
+            self.assertIn("国际/跨境 · 携程", labels)
             page.close()
 
     def test_expired_route_is_labeled_and_guides_user_to_edit_date(self):
@@ -265,7 +265,7 @@ class DesktopR2Tests(unittest.TestCase):
         self.assertEqual(data.latest_run_duration_seconds, 75)
 
     def test_dashboard_low_price_card_identifies_route_price_and_opens_candidates(self):
-        route = _route("route-1")
+        route = replace(_route("route-1"), departure_date=date.today() + timedelta(days=1))
         data = load_dashboard_data(
             _FakeDashboardStore(),
             [route],

@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from typing import Callable, Protocol
 
 from .collector import QunarBrowserSession
+from .market import resolve_provider
 from .config import CANDIDATE_DETAIL_RETENTION_DAYS, AppSettings, validate_enabled_leg_limit
 from .errors import CollectionError, ManualAttentionRequired
 from .excel_report import generate_workbook
@@ -17,6 +18,13 @@ from .models import LegConfig, LegResult, LegStatus, PreferredPriceReference, Ru
 from .storage import SQLiteStore
 
 logger = logging.getLogger(__name__)
+
+
+def _history_provider(leg: LegConfig) -> str:
+    try:
+        return resolve_provider(leg)
+    except CollectionError:
+        return "unknown"
 
 
 class MonitorEventSink(Protocol):
@@ -143,6 +151,8 @@ class MonitorService:
                     result.leg.id,
                     preferred.history_key(result.leg.departure_date),
                     before=before,
+                    provider=_history_provider(result.leg),
+                    leg=result.leg,
                 )
                 flight = result.preferred_matches[index] if index < len(result.preferred_matches) else None
                 if reference.first_total_price_cny is None and flight is not None:
@@ -167,6 +177,8 @@ class MonitorService:
                     result.leg.id,
                     flight.flight_signature,
                     before=before,
+                    provider=_history_provider(result.leg),
+                    leg=result.leg,
                 )
                 if reference.first_total_price_cny is None:
                     reference = PreferredPriceReference(
@@ -192,7 +204,7 @@ class MonitorService:
             if results and not self.should_continue():
                 break
             self._notify(lambda leg=leg, index=index: self.event_sink.on_leg_started(leg, index, len(self.legs)))
-            previous = self.store.previous_minimum(leg.id, before=started_at)
+            previous = self.store.previous_minimum(leg.id, before=started_at, provider=_history_provider(leg), leg=leg)
             result = self._collect_with_retry(leg)
             result.previous_min_total_cny = previous
             results.append(result)

@@ -28,6 +28,7 @@ from ..desktop_app.diagnostics import export_diagnostic_zip
 from ..desktop_app.view_data import load_dashboard_data
 from ..desktop_app.route_repository import is_route_expired
 from ..models import LegConfig
+from ..market import source_label
 from ..storage import SQLiteStore
 from .dashboard_page import DashboardPage, _icon_label, _plain_icon
 from .flight_results_page import FlightResultsPage
@@ -565,10 +566,10 @@ class RoutesPage(QWidget):
         layout.addLayout(route_row)
 
         tags = QHBoxLayout()
-        source = "国内 · 同程" if _market_name(route) == "domestic" else "国际/跨境 · 去哪儿"
-        source_label = QLabel(source, objectName="sourcePill")
+        source = source_label(route)
+        source_badge = QLabel(source, objectName="sourcePill")
         trip_label = QLabel("往返" if route.return_date else "单程", objectName="neutralPill")
-        tags.addWidget(source_label)
+        tags.addWidget(source_badge)
         tags.addWidget(trip_label)
         tags.addStretch()
         layout.addLayout(tags)

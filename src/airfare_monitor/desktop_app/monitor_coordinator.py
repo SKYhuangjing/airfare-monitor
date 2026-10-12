@@ -15,11 +15,7 @@ from ..config import AppSettings, load_routes, load_settings
 from ..models import LegConfig, LegResult, RunReport
 from ..scheduler import AlreadyRunningError, ProcessLock
 from ..service import MonitorEventSink, MonitorService
-from ..collector import (
-    QunarBrowserSession, build_search_url, build_tongcheng_search_url,
-    build_roundtrip_search_url,
-)
-from ..market import resolve_market
+from ..collector import QunarBrowserSession, build_provider_search_url
 from ..mail import send_report_with_credentials
 from .credential_store import CredentialStore, CredentialStoreError
 from .mail_profile import MailProfileRepository
@@ -276,12 +272,7 @@ class MonitorCoordinator:
             session = QunarBrowserSession(replace(settings.browser, headless=False))
             session.start()
             assert session.tab is not None
-            if resolve_market(leg) == "domestic":
-                url = build_tongcheng_search_url(settings.browser.tongcheng_search_url_template, leg)
-            elif leg.is_round_trip:
-                url = build_roundtrip_search_url(settings.browser.roundtrip_search_url_template, leg)
-            else:
-                url = build_search_url(settings.browser.search_url_template, leg)
+            url = build_provider_search_url(settings.browser, leg)
             try:
                 session.tab.get(url, timeout=settings.browser.page_load_timeout_seconds)
             except Exception:

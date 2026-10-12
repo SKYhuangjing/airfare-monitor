@@ -12,7 +12,7 @@ legs:
       start: "00:00"
       end: "23:59"
     direct_only: true
-    # 可选：配置后该项按去哪儿往返组合价采集，不是两个单程价相加。
+    # 国际航程可选：配置后默认采集携程完整往返组合价，不是两个单程价相加。
     # return_date: "2026-10-08"
     # return_etd_window:
     #   start: "12:00"
@@ -27,8 +27,11 @@ legs:
     adult_count: 1
     child_count: 0
     cabin_class: economy
-    # auto: 中国大陆境内走同程，其余走去哪儿；也可显式填 domestic/international。
+    # market 只表示国内/国际分类，不表示查询平台。
     market: auto
+    # auto: 国内同程、国际单程和往返携程。
+    # 可逐条设为 ctrip/qunar/tongcheng；同程仅支持国内单程。
+    provider: auto
     # Optional exact schedules to call out separately in every email.
     preferred_schedules:
       - label: 出发地 → 到达地

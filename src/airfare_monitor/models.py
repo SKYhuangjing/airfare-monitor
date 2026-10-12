@@ -85,6 +85,7 @@ class LegConfig:
     return_etd_window: EtdWindow | None = None
     return_direct_only: bool | None = None
     return_max_layover_minutes: int | None = None
+    provider: str = "auto"
 
     @property
     def is_round_trip(self) -> bool:

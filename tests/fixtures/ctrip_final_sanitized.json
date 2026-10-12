@@ -1,0 +1,1100 @@
+{
+  "status": 0,
+  "data": {
+    "context": {
+      "finished": true,
+      "flag": 0,
+      "showAuthCode": false
+    },
+    "needUserLogin": false,
+    "lgn": false,
+    "flightItineraryList": [
+      {
+        "flightSegments": [
+          {
+            "segmentNo": 1,
+            "crossDays": 0,
+            "transferCount": 1,
+            "stopCount": 0,
+            "duration": 395,
+            "flightList": [
+              {
+                "flightNo": "MU5067",
+                "sequenceNo": 1,
+                "marketAirlineCode": "MU",
+                "departureCityCode": "SHA",
+                "arrivalCityCode": "TAE",
+                "departureAirportCode": "PVG",
+                "arrivalAirportCode": "TAE",
+                "departureDateTime": "2026-10-14 13:00:00",
+                "arrivalDateTime": "2026-10-14 16:10:00",
+                "duration": 130,
+                "transferDuration": 200,
+                "stopCount": 0
+              },
+              {
+                "flightNo": "TW811",
+                "sequenceNo": 2,
+                "marketAirlineCode": "TW",
+                "departureCityCode": "TAE",
+                "arrivalCityCode": "CJU",
+                "departureAirportCode": "TAE",
+                "arrivalAirportCode": "CJU",
+                "departureDateTime": "2026-10-14 19:30:00",
+                "arrivalDateTime": "2026-10-14 20:35:00",
+                "duration": 65,
+                "transferDuration": 0,
+                "stopCount": 0
+              }
+            ]
+          }
+        ],
+        "priceList": [
+          {
+            "adultPrice": 704,
+            "adultTax": 405,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "ticketCount": 2,
+            "lowestPrice": true,
+            "productType": {
+              "name": "多票组合"
+            },
+            "servicePackage": {
+              "price": 58
+            }
+          },
+          {
+            "adultPrice": 980,
+            "adultTax": 433,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "lowestPrice": false,
+            "productType": {
+              "name": "多票组合"
+            }
+          }
+        ]
+      },
+      {
+        "flightSegments": [
+          {
+            "segmentNo": 1,
+            "crossDays": 0,
+            "transferCount": 1,
+            "stopCount": 0,
+            "duration": 590,
+            "flightList": [
+              {
+                "flightNo": "MU5053",
+                "sequenceNo": 1,
+                "marketAirlineCode": "MU",
+                "departureCityCode": "SHA",
+                "arrivalCityCode": "TAE",
+                "departureAirportCode": "PVG",
+                "arrivalAirportCode": "TAE",
+                "departureDateTime": "2026-10-14 08:15:00",
+                "arrivalDateTime": "2026-10-14 11:00:00",
+                "duration": 105,
+                "transferDuration": 420,
+                "stopCount": 0
+              },
+              {
+                "flightNo": "LJ429",
+                "sequenceNo": 2,
+                "marketAirlineCode": "LJ",
+                "departureCityCode": "TAE",
+                "arrivalCityCode": "CJU",
+                "departureAirportCode": "TAE",
+                "arrivalAirportCode": "CJU",
+                "departureDateTime": "2026-10-14 18:00:00",
+                "arrivalDateTime": "2026-10-14 19:05:00",
+                "duration": 65,
+                "transferDuration": 0,
+                "stopCount": 0
+              }
+            ]
+          }
+        ],
+        "priceList": [
+          {
+            "adultPrice": 654,
+            "adultTax": 448,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "lowestPrice": true,
+            "productType": {
+              "name": "多票组合"
+            },
+            "servicePackage": {
+              "price": 58
+            }
+          },
+          {
+            "adultPrice": 1049,
+            "adultTax": 447,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "lowestPrice": false,
+            "productType": {
+              "name": "多票组合"
+            }
+          }
+        ]
+      },
+      {
+        "flightSegments": [
+          {
+            "segmentNo": 1,
+            "crossDays": 0,
+            "transferCount": 1,
+            "stopCount": 0,
+            "duration": 630,
+            "flightList": [
+              {
+                "flightNo": "MU5053",
+                "sequenceNo": 1,
+                "marketAirlineCode": "MU",
+                "departureCityCode": "SHA",
+                "arrivalCityCode": "TAE",
+                "departureAirportCode": "PVG",
+                "arrivalAirportCode": "TAE",
+                "departureDateTime": "2026-10-14 08:15:00",
+                "arrivalDateTime": "2026-10-14 11:00:00",
+                "duration": 105,
+                "transferDuration": 460,
+                "stopCount": 0
+              },
+              {
+                "flightNo": "KE1575",
+                "sequenceNo": 2,
+                "marketAirlineCode": "KE",
+                "departureCityCode": "TAE",
+                "arrivalCityCode": "CJU",
+                "departureAirportCode": "TAE",
+                "arrivalAirportCode": "CJU",
+                "departureDateTime": "2026-10-14 18:40:00",
+                "arrivalDateTime": "2026-10-14 19:45:00",
+                "duration": 65,
+                "transferDuration": 0,
+                "stopCount": 0
+              }
+            ]
+          }
+        ],
+        "priceList": [
+          {
+            "adultPrice": 764,
+            "adultTax": 442,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "lowestPrice": true,
+            "productType": {
+              "name": "多票组合"
+            },
+            "servicePackage": {
+              "price": 58
+            }
+          }
+        ]
+      },
+      {
+        "flightSegments": [
+          {
+            "segmentNo": 1,
+            "crossDays": 0,
+            "transferCount": 0,
+            "stopCount": 0,
+            "duration": 90,
+            "flightList": [
+              {
+                "flightNo": "9C8567",
+                "sequenceNo": 1,
+                "marketAirlineCode": "9C",
+                "departureCityCode": "SHA",
+                "arrivalCityCode": "CJU",
+                "departureAirportCode": "PVG",
+                "arrivalAirportCode": "CJU",
+                "departureDateTime": "2026-10-14 18:05:00",
+                "arrivalDateTime": "2026-10-14 20:35:00",
+                "duration": 90,
+                "transferDuration": 0,
+                "stopCount": 0
+              }
+            ]
+          }
+        ],
+        "priceList": [
+          {
+            "adultPrice": 150,
+            "adultTax": 180,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "lowestPrice": true,
+            "productType": {}
+          },
+          {
+            "adultPrice": 200,
+            "adultTax": 180,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "lowestPrice": false,
+            "productType": {}
+          }
+        ]
+      },
+      {
+        "flightSegments": [
+          {
+            "segmentNo": 1,
+            "crossDays": 0,
+            "transferCount": 0,
+            "stopCount": 0,
+            "duration": 70,
+            "flightList": [
+              {
+                "flightNo": "ZE692",
+                "sequenceNo": 1,
+                "marketAirlineCode": "ZE",
+                "departureCityCode": "SHA",
+                "arrivalCityCode": "CJU",
+                "departureAirportCode": "PVG",
+                "arrivalAirportCode": "CJU",
+                "departureDateTime": "2026-10-14 05:05:00",
+                "arrivalDateTime": "2026-10-14 07:15:00",
+                "duration": 70,
+                "transferDuration": 0,
+                "stopCount": 0
+              }
+            ]
+          }
+        ],
+        "priceList": [
+          {
+            "adultPrice": 252,
+            "adultTax": 100,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "ticketCount": 9,
+            "lowestPrice": true
+          },
+          {
+            "adultPrice": 265,
+            "adultTax": 100,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "ticketCount": 9,
+            "lowestPrice": false
+          },
+          {
+            "adultPrice": 1466,
+            "adultTax": 446,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "ticketCount": 9,
+            "lowestPrice": false
+          }
+        ]
+      },
+      {
+        "flightSegments": [
+          {
+            "segmentNo": 1,
+            "crossDays": 0,
+            "transferCount": 0,
+            "stopCount": 0,
+            "duration": 85,
+            "flightList": [
+              {
+                "flightNo": "9C8573",
+                "sequenceNo": 1,
+                "marketAirlineCode": "9C",
+                "departureCityCode": "SHA",
+                "arrivalCityCode": "CJU",
+                "departureAirportCode": "PVG",
+                "arrivalAirportCode": "CJU",
+                "departureDateTime": "2026-10-14 20:05:00",
+                "arrivalDateTime": "2026-10-14 22:30:00",
+                "duration": 85,
+                "transferDuration": 0,
+                "stopCount": 0
+              }
+            ]
+          }
+        ],
+        "priceList": [
+          {
+            "adultPrice": 150,
+            "adultTax": 180,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "lowestPrice": true,
+            "productType": {}
+          },
+          {
+            "adultPrice": 200,
+            "adultTax": 180,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "lowestPrice": false,
+            "productType": {}
+          }
+        ]
+      },
+      {
+        "flightSegments": [
+          {
+            "segmentNo": 1,
+            "crossDays": 0,
+            "transferCount": 0,
+            "stopCount": 0,
+            "duration": 90,
+            "flightList": [
+              {
+                "flightNo": "HO1325",
+                "sequenceNo": 1,
+                "marketAirlineCode": "HO",
+                "departureCityCode": "SHA",
+                "arrivalCityCode": "CJU",
+                "departureAirportCode": "PVG",
+                "arrivalAirportCode": "CJU",
+                "departureDateTime": "2026-10-14 14:30:00",
+                "arrivalDateTime": "2026-10-14 17:00:00",
+                "duration": 90,
+                "transferDuration": 0,
+                "stopCount": 0
+              }
+            ]
+          }
+        ],
+        "priceList": [
+          {
+            "adultPrice": 185,
+            "adultTax": 317,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "lowestPrice": true
+          },
+          {
+            "adultPrice": 670,
+            "adultTax": 317,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "lowestPrice": false,
+            "productType": {}
+          },
+          {
+            "adultPrice": 190,
+            "adultTax": 317,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "lowestPrice": false,
+            "productType": {
+              "name": "HO"
+            }
+          }
+        ]
+      },
+      {
+        "flightSegments": [
+          {
+            "segmentNo": 1,
+            "crossDays": 0,
+            "transferCount": 1,
+            "stopCount": 0,
+            "duration": 330,
+            "flightList": [
+              {
+                "flightNo": "MU5053",
+                "sequenceNo": 1,
+                "marketAirlineCode": "MU",
+                "departureCityCode": "SHA",
+                "arrivalCityCode": "TAE",
+                "departureAirportCode": "PVG",
+                "arrivalAirportCode": "TAE",
+                "departureDateTime": "2026-10-14 08:15:00",
+                "arrivalDateTime": "2026-10-14 11:00:00",
+                "duration": 105,
+                "transferDuration": 160,
+                "stopCount": 0
+              },
+              {
+                "flightNo": "LJ425",
+                "sequenceNo": 2,
+                "marketAirlineCode": "LJ",
+                "departureCityCode": "TAE",
+                "arrivalCityCode": "CJU",
+                "departureAirportCode": "TAE",
+                "arrivalAirportCode": "CJU",
+                "departureDateTime": "2026-10-14 13:40:00",
+                "arrivalDateTime": "2026-10-14 14:45:00",
+                "duration": 65,
+                "transferDuration": 0,
+                "stopCount": 0
+              }
+            ]
+          }
+        ],
+        "priceList": [
+          {
+            "adultPrice": 832,
+            "adultTax": 448,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "lowestPrice": true,
+            "productType": {
+              "name": "多票组合"
+            },
+            "servicePackage": {
+              "price": 58
+            }
+          },
+          {
+            "adultPrice": 1227,
+            "adultTax": 447,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "lowestPrice": false,
+            "productType": {
+              "name": "多票组合"
+            }
+          }
+        ]
+      },
+      {
+        "flightSegments": [
+          {
+            "segmentNo": 1,
+            "crossDays": 0,
+            "transferCount": 0,
+            "stopCount": 0,
+            "duration": 105,
+            "flightList": [
+              {
+                "flightNo": "9C8571",
+                "sequenceNo": 1,
+                "marketAirlineCode": "9C",
+                "departureCityCode": "SHA",
+                "arrivalCityCode": "CJU",
+                "departureAirportCode": "PVG",
+                "arrivalAirportCode": "CJU",
+                "departureDateTime": "2026-10-14 10:35:00",
+                "arrivalDateTime": "2026-10-14 13:20:00",
+                "duration": 105,
+                "transferDuration": 0,
+                "stopCount": 0
+              }
+            ]
+          }
+        ],
+        "priceList": [
+          {
+            "adultPrice": 240,
+            "adultTax": 180,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "lowestPrice": true,
+            "productType": {}
+          },
+          {
+            "adultPrice": 320,
+            "adultTax": 180,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "lowestPrice": false,
+            "productType": {}
+          }
+        ]
+      },
+      {
+        "flightSegments": [
+          {
+            "segmentNo": 1,
+            "crossDays": 0,
+            "transferCount": 0,
+            "stopCount": 0,
+            "duration": 100,
+            "flightList": [
+              {
+                "flightNo": "MU5037",
+                "sequenceNo": 1,
+                "marketAirlineCode": "MU",
+                "departureCityCode": "SHA",
+                "arrivalCityCode": "CJU",
+                "departureAirportCode": "PVG",
+                "arrivalAirportCode": "CJU",
+                "departureDateTime": "2026-10-14 12:20:00",
+                "arrivalDateTime": "2026-10-14 15:00:00",
+                "duration": 100,
+                "transferDuration": 0,
+                "stopCount": 0
+              }
+            ]
+          }
+        ],
+        "priceList": [
+          {
+            "adultPrice": 594,
+            "adultTax": 317,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "lowestPrice": true,
+            "productType": {}
+          },
+          {
+            "adultPrice": 600,
+            "adultTax": 317,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "lowestPrice": false,
+            "productType": {
+              "name": "MU"
+            }
+          },
+          {
+            "adultPrice": 842,
+            "adultTax": 317,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "lowestPrice": false,
+            "productType": {}
+          }
+        ]
+      },
+      {
+        "flightSegments": [
+          {
+            "segmentNo": 1,
+            "crossDays": 0,
+            "transferCount": 1,
+            "stopCount": 0,
+            "duration": 510,
+            "flightList": [
+              {
+                "flightNo": "HO1257",
+                "sequenceNo": 1,
+                "marketAirlineCode": "HO",
+                "departureCityCode": "SHA",
+                "arrivalCityCode": "BJS",
+                "departureAirportCode": "PVG",
+                "arrivalAirportCode": "PKX",
+                "departureDateTime": "2026-10-14 08:25:00",
+                "arrivalDateTime": "2026-10-14 10:35:00",
+                "duration": 130,
+                "transferDuration": 235,
+                "stopCount": 0
+              },
+              {
+                "flightNo": "7C8136",
+                "sequenceNo": 2,
+                "marketAirlineCode": "7C",
+                "departureCityCode": "BJS",
+                "arrivalCityCode": "CJU",
+                "departureAirportCode": "PKX",
+                "arrivalAirportCode": "CJU",
+                "departureDateTime": "2026-10-14 14:30:00",
+                "arrivalDateTime": "2026-10-14 17:55:00",
+                "duration": 145,
+                "transferDuration": 0,
+                "stopCount": 0
+              }
+            ]
+          }
+        ],
+        "priceList": [
+          {
+            "adultPrice": 556,
+            "adultTax": 592,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "ticketCount": 4,
+            "lowestPrice": true,
+            "productType": {
+              "name": "多票组合"
+            }
+          },
+          {
+            "adultPrice": 982,
+            "adultTax": 580,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "lowestPrice": false,
+            "productType": {
+              "name": "多票组合"
+            }
+          }
+        ]
+      },
+      {
+        "flightSegments": [
+          {
+            "segmentNo": 1,
+            "crossDays": 0,
+            "transferCount": 0,
+            "stopCount": 0,
+            "duration": 95,
+            "flightList": [
+              {
+                "flightNo": "MU5027",
+                "sequenceNo": 1,
+                "marketAirlineCode": "MU",
+                "departureCityCode": "SHA",
+                "arrivalCityCode": "CJU",
+                "departureAirportCode": "PVG",
+                "arrivalAirportCode": "CJU",
+                "departureDateTime": "2026-10-14 15:35:00",
+                "arrivalDateTime": "2026-10-14 18:10:00",
+                "duration": 95,
+                "transferDuration": 0,
+                "stopCount": 0
+              }
+            ]
+          }
+        ],
+        "priceList": [
+          {
+            "adultPrice": 297,
+            "adultTax": 317,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "lowestPrice": true,
+            "productType": {}
+          },
+          {
+            "adultPrice": 842,
+            "adultTax": 317,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "lowestPrice": false,
+            "productType": {}
+          },
+          {
+            "adultPrice": 300,
+            "adultTax": 317,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "lowestPrice": false,
+            "productType": {
+              "name": "MU"
+            }
+          }
+        ]
+      },
+      {
+        "flightSegments": [
+          {
+            "segmentNo": 1,
+            "crossDays": 0,
+            "transferCount": 0,
+            "stopCount": 0,
+            "duration": 95,
+            "flightList": [
+              {
+                "flightNo": "9C8569",
+                "sequenceNo": 1,
+                "marketAirlineCode": "9C",
+                "departureCityCode": "SHA",
+                "arrivalCityCode": "CJU",
+                "departureAirportCode": "PVG",
+                "arrivalAirportCode": "CJU",
+                "departureDateTime": "2026-10-14 07:45:00",
+                "arrivalDateTime": "2026-10-14 10:20:00",
+                "duration": 95,
+                "transferDuration": 0,
+                "stopCount": 0
+              }
+            ]
+          }
+        ],
+        "priceList": [
+          {
+            "adultPrice": 400,
+            "adultTax": 180,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "ticketCount": 3,
+            "lowestPrice": true,
+            "productType": {}
+          },
+          {
+            "adultPrice": 450,
+            "adultTax": 180,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "ticketCount": 3,
+            "lowestPrice": false,
+            "productType": {}
+          }
+        ]
+      },
+      {
+        "flightSegments": [
+          {
+            "segmentNo": 1,
+            "crossDays": 0,
+            "transferCount": 1,
+            "stopCount": 0,
+            "duration": 345,
+            "flightList": [
+              {
+                "flightNo": "MU5067",
+                "sequenceNo": 1,
+                "marketAirlineCode": "MU",
+                "departureCityCode": "SHA",
+                "arrivalCityCode": "TAE",
+                "departureAirportCode": "PVG",
+                "arrivalAirportCode": "TAE",
+                "departureDateTime": "2026-10-14 13:00:00",
+                "arrivalDateTime": "2026-10-14 16:10:00",
+                "duration": 130,
+                "transferDuration": 150,
+                "stopCount": 0
+              },
+              {
+                "flightNo": "KE1575",
+                "sequenceNo": 2,
+                "marketAirlineCode": "KE",
+                "departureCityCode": "TAE",
+                "arrivalCityCode": "CJU",
+                "departureAirportCode": "TAE",
+                "arrivalAirportCode": "CJU",
+                "departureDateTime": "2026-10-14 18:40:00",
+                "arrivalDateTime": "2026-10-14 19:45:00",
+                "duration": 65,
+                "transferDuration": 0,
+                "stopCount": 0
+              }
+            ]
+          }
+        ],
+        "priceList": [
+          {
+            "adultPrice": 764,
+            "adultTax": 442,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "lowestPrice": true,
+            "productType": {
+              "name": "多票组合"
+            },
+            "servicePackage": {
+              "price": 58
+            }
+          }
+        ]
+      },
+      {
+        "flightSegments": [
+          {
+            "segmentNo": 1,
+            "crossDays": 0,
+            "transferCount": 1,
+            "stopCount": 0,
+            "duration": 475,
+            "flightList": [
+              {
+                "flightNo": "MU5053",
+                "sequenceNo": 1,
+                "marketAirlineCode": "MU",
+                "departureCityCode": "SHA",
+                "arrivalCityCode": "TAE",
+                "departureAirportCode": "PVG",
+                "arrivalAirportCode": "TAE",
+                "departureDateTime": "2026-10-14 08:15:00",
+                "arrivalDateTime": "2026-10-14 11:00:00",
+                "duration": 105,
+                "transferDuration": 295,
+                "stopCount": 0
+              },
+              {
+                "flightNo": "7C705",
+                "sequenceNo": 2,
+                "marketAirlineCode": "7C",
+                "departureCityCode": "TAE",
+                "arrivalCityCode": "CJU",
+                "departureAirportCode": "TAE",
+                "arrivalAirportCode": "CJU",
+                "departureDateTime": "2026-10-14 15:55:00",
+                "arrivalDateTime": "2026-10-14 17:10:00",
+                "duration": 75,
+                "transferDuration": 0,
+                "stopCount": 0
+              }
+            ]
+          }
+        ],
+        "priceList": [
+          {
+            "adultPrice": 695,
+            "adultTax": 447,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "lowestPrice": true,
+            "productType": {
+              "name": "多票组合"
+            },
+            "servicePackage": {
+              "price": 58
+            }
+          },
+          {
+            "adultPrice": 738,
+            "adultTax": 446,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "ticketCount": 4,
+            "lowestPrice": false,
+            "productType": {
+              "name": "多票组合"
+            }
+          },
+          {
+            "adultPrice": 1096,
+            "adultTax": 448,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "lowestPrice": false,
+            "productType": {
+              "name": "多票组合"
+            }
+          }
+        ]
+      },
+      {
+        "flightSegments": [
+          {
+            "segmentNo": 1,
+            "crossDays": 1,
+            "transferCount": 1,
+            "stopCount": 0,
+            "duration": 625,
+            "flightList": [
+              {
+                "flightNo": "CX381",
+                "sequenceNo": 1,
+                "marketAirlineCode": "CX",
+                "departureCityCode": "SHA",
+                "arrivalCityCode": "HKG",
+                "departureAirportCode": "PVG",
+                "arrivalAirportCode": "HKG",
+                "departureDateTime": "2026-10-14 19:05:00",
+                "arrivalDateTime": "2026-10-14 21:50:00",
+                "duration": 165,
+                "transferDuration": 280,
+                "stopCount": 0
+              },
+              {
+                "flightNo": "CX5698",
+                "sequenceNo": 2,
+                "marketAirlineCode": "CX",
+                "departureCityCode": "HKG",
+                "arrivalCityCode": "CJU",
+                "departureAirportCode": "HKG",
+                "arrivalAirportCode": "CJU",
+                "departureDateTime": "2026-10-15 02:30:00",
+                "arrivalDateTime": "2026-10-15 06:30:00",
+                "duration": 180,
+                "transferDuration": 0,
+                "stopCount": 0
+              }
+            ]
+          }
+        ],
+        "priceList": [
+          {
+            "adultPrice": 727,
+            "adultTax": 660,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "lowestPrice": true,
+            "productType": {
+              "name": "CX"
+            }
+          },
+          {
+            "adultPrice": 975,
+            "adultTax": 660,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "lowestPrice": false,
+            "productType": {
+              "name": "CX"
+            }
+          },
+          {
+            "adultPrice": 738,
+            "adultTax": 660,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "lowestPrice": false,
+            "productType": {
+              "name": "CX"
+            }
+          }
+        ]
+      },
+      {
+        "flightSegments": [
+          {
+            "segmentNo": 1,
+            "crossDays": 0,
+            "transferCount": 0,
+            "stopCount": 0,
+            "duration": 105,
+            "flightList": [
+              {
+                "flightNo": "HO1371",
+                "sequenceNo": 1,
+                "marketAirlineCode": "HO",
+                "departureCityCode": "SHA",
+                "arrivalCityCode": "CJU",
+                "departureAirportCode": "PVG",
+                "arrivalAirportCode": "CJU",
+                "departureDateTime": "2026-10-14 18:50:00",
+                "arrivalDateTime": "2026-10-14 21:35:00",
+                "duration": 105,
+                "transferDuration": 0,
+                "stopCount": 0
+              }
+            ]
+          }
+        ],
+        "priceList": [
+          {
+            "adultPrice": 185,
+            "adultTax": 317,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "lowestPrice": true
+          },
+          {
+            "adultPrice": 190,
+            "adultTax": 317,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "lowestPrice": false,
+            "productType": {
+              "name": "HO"
+            }
+          },
+          {
+            "adultPrice": 670,
+            "adultTax": 317,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "lowestPrice": false,
+            "productType": {}
+          }
+        ]
+      },
+      {
+        "flightSegments": [
+          {
+            "segmentNo": 1,
+            "crossDays": 0,
+            "transferCount": 1,
+            "stopCount": 0,
+            "duration": 445,
+            "flightList": [
+              {
+                "flightNo": "MU5053",
+                "sequenceNo": 1,
+                "marketAirlineCode": "MU",
+                "departureCityCode": "SHA",
+                "arrivalCityCode": "TAE",
+                "departureAirportCode": "PVG",
+                "arrivalAirportCode": "TAE",
+                "departureDateTime": "2026-10-14 08:15:00",
+                "arrivalDateTime": "2026-10-14 11:00:00",
+                "duration": 105,
+                "transferDuration": 275,
+                "stopCount": 0
+              },
+              {
+                "flightNo": "LJ427",
+                "sequenceNo": 2,
+                "marketAirlineCode": "LJ",
+                "departureCityCode": "TAE",
+                "arrivalCityCode": "CJU",
+                "departureAirportCode": "TAE",
+                "arrivalAirportCode": "CJU",
+                "departureDateTime": "2026-10-14 15:35:00",
+                "arrivalDateTime": "2026-10-14 16:40:00",
+                "duration": 65,
+                "transferDuration": 0,
+                "stopCount": 0
+              }
+            ]
+          }
+        ],
+        "priceList": [
+          {
+            "adultPrice": 721,
+            "adultTax": 448,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "ticketCount": 4,
+            "lowestPrice": true,
+            "productType": {
+              "name": "多票组合"
+            },
+            "servicePackage": {
+              "price": 58
+            }
+          },
+          {
+            "adultPrice": 1157,
+            "adultTax": 447,
+            "eligibility": "NOR",
+            "cabin": "Y",
+            "itineraryCabin": "Y",
+            "lowestPrice": false,
+            "productType": {
+              "name": "多票组合"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

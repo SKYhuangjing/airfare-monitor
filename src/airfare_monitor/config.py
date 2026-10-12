@@ -12,7 +12,8 @@ from typing import Any
 
 import yaml
 
-from .errors import ConfigError
+from .errors import ConfigError, CollectionError
+from .market import resolve_provider
 from .models import EtdWindow, LegConfig, PreferredSchedule
 
 _IATA_RE = re.compile(r"^[A-Z]{3}$")
@@ -252,6 +253,9 @@ def load_routes(path: str | Path, *, allow_empty: bool = False) -> list[LegConfi
         market = _string(item.get("market", "auto"), f"{prefix}.market").lower()
         if market not in _MARKETS:
             raise ConfigError(f"{prefix}.market 必须是 auto、domestic 或 international")
+        provider = _string(item.get("provider", "auto"), f"{prefix}.provider").lower()
+        if provider not in {"auto", "ctrip", "qunar", "tongcheng"}:
+            raise ConfigError(f"{prefix}.provider 必须是 auto、ctrip、qunar 或 tongcheng")
 
         raw_preferred = item.get("preferred_schedules", [])
         if not isinstance(raw_preferred, list):
@@ -381,6 +385,7 @@ def load_routes(path: str | Path, *, allow_empty: bool = False) -> list[LegConfi
                 ),
                 preferred_schedules=tuple(preferred_schedules),
                 market=market,
+                provider=provider,
                 max_layover_minutes=(
                     _positive_int(item["max_layover_minutes"], f"{prefix}.max_layover_minutes")
                     if item.get("max_layover_minutes") is not None
@@ -392,6 +397,12 @@ def load_routes(path: str | Path, *, allow_empty: bool = False) -> list[LegConfi
                 return_max_layover_minutes=return_max_layover_minutes,
             )
         )
+    for leg in legs:
+        if leg.provider != "auto":
+            try:
+                resolve_provider(leg)
+            except CollectionError as exc:
+                raise ConfigError(str(exc)) from exc
     validate_enabled_leg_limit(legs)
     if not allow_empty and not any(leg.enabled for leg in legs):
         raise ConfigError("至少需要启用一个航程")

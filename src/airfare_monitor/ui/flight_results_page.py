@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..market import resolve_market
+from ..market import resolve_market, source_label
 from ..models import LegConfig
 from ..storage import SQLiteStore
 
@@ -162,7 +162,7 @@ class FlightResultsPage(QWidget):
         self.title.setText(
             f"{origin} {route.origin_airport_iata} {arrow} {destination} {route.destination_airport_iata}"
         )
-        source = "国内 · 同程" if _market(route) == "domestic" else "国际/跨境 · 去哪儿"
+        source = source_label(route)
         dates = route.departure_date.isoformat()
         if route.return_date:
             dates += f" — {route.return_date.isoformat()}"

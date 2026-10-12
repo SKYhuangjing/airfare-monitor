@@ -22,11 +22,14 @@
 | `adult_count` | yes | Adult passenger count used for pricing |
 | `child_count` | yes | Child passenger count used for pricing |
 | `cabin_class` | yes | Requested cabin class |
+| `provider` | no | `auto` (default), `ctrip`, `qunar` or `tongcheng`; auto uses Ctrip for international one-way and round trips |
 | `preferred_schedules` | no | Exact schedules shown separately with live prices in each email |
 
 Each preferred schedule contains a display `label`, target departure and arrival times, an `arrival_day_offset`, independently configurable departure/arrival tolerance minutes, and optional actual origin/destination airport IATA codes. Preferred matches are selected from the complete eligible response before the cheapest `top_n` slice is applied.
 
 Preferred prices are persisted independently by leg, departure date, target times and actual airports. The first successful match is retained as the baseline; the most recent successful match is used for the previous-price comparison. Tolerance-only changes keep the same history identity.
+
+Price references also require the same collection provider, configured actual airport pair, departure date and return date (including no return date for one-way searches). Changing trip type or return date cannot reuse a different trip's baseline. Old records with an unknown provider remain available in history but are excluded from known-provider baselines.
 
 ## Flight snapshot
 
@@ -61,7 +64,7 @@ Planned fields:
 | `source_domain` | Quoted supplier/source domain |
 | `captured_at` | Asia/Shanghai capture timestamp |
 
-`flight_signature` must not use only the flight number. It includes all outbound and, for round trips, all return segment flight numbers, dates, airports and scheduled times. Round-trip `total_price_cny` is Qunar's combination total and is never synthesized from two one-way observations.
+`flight_signature` must not use only the flight number. It includes all outbound and, for round trips, all return segment flight numbers, dates, airports and scheduled times. Round-trip `total_price_cny` is the platform's complete combination total for all passengers and is never synthesized from two one-way observations. Ctrip combination `adultPrice`/`adultTax` and child equivalents already cover both directions and are counted once per passenger.
 
 Seat availability is advisory. In observed Qunar payloads, `journey.seatInfo.nums` is the overall round-trip hint and each `journey.trips[*].seatInfo.nums` is the direction-level hint. The value `9` is treated as a capped platform hint and rendered as “9 or more”, not as an exact count. `ticketInsufficient` is retained as a review warning rather than interpreted as a guaranteed sold-out state.
 
