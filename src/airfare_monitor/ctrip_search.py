@@ -23,9 +23,8 @@ def build_ctrip_search_url(leg: LegConfig) -> str:
         path = "round"
         params["isbuildup"] = 1  # Native complete-combination mode, not outbound selection.
     query = urlencode({"depdate": dates, **params})
-    suffix = "0" if leg.is_round_trip else ""
     return (f"https://flights.ctrip.com/online/list/{path}-"
-            f"{city_code(leg.origin_airport_iata).lower()}-{city_code(leg.destination_airport_iata).lower()}{suffix}?{query}")
+            f"{city_code(leg.origin_airport_iata).lower()}-{city_code(leg.destination_airport_iata).lower()}?{query}")
 
 
 class CtripSearchCapture:

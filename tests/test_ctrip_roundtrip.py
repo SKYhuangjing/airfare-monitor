@@ -150,7 +150,7 @@ class CtripRoundTripParserTests(unittest.TestCase):
 class CtripRoundTripCaptureTests(unittest.TestCase):
     def test_url_uses_native_combination_mode_and_both_dates(self):
         url = urlsplit(build_ctrip_search_url(leg(adult_count=2, child_count=1)))
-        self.assertEqual(url.path, "/online/list/round-sha-kul0")
+        self.assertEqual(url.path, "/online/list/round-sha-kul")
         self.assertEqual(parse_qs(url.query), {"depdate": ["2026-10-14_2026-10-17"], "isbuildup": ["1"],
                                               "adult": ["2"], "child": ["1"], "infant": ["0"], "cabin": ["y_s"]})
 
