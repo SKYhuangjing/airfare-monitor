@@ -176,6 +176,14 @@ class QunarBrowserSession:
             if self.settings.background:
                 bounds = self.tab.run_cdp("Browser.getWindowForTarget")
                 if bounds.get("bounds", {}).get("windowState") != "minimized":
+                    window_id = bounds.get("windowId")
+                    if window_id is not None:
+                        try:
+                            self.tab.run_cdp("Browser.setWindowBounds", windowId=window_id, bounds={"windowState": "minimized"})
+                        except Exception:
+                            pass
+                        bounds = self.tab.run_cdp("Browser.getWindowForTarget")
+                if bounds.get("bounds", {}).get("windowState") != "minimized":
                     raise CollectionError("后台浏览器窗口状态异常，已停止查询")
             self.tab.set.timeouts(
                 base=self.settings.search_completion_timeout_seconds,
@@ -446,7 +454,7 @@ class QunarBrowserSession:
         if criteria.get("departureDate") != leg.departure_date.isoformat():
             raise CollectionError("携程页面搜索日期与航程配置不一致")
         city_pair = (criteria.get("departureCityCode"), criteria.get("arrivalCityCode"))
-        if not all(isinstance(code, str) and len(code) == 3 and code.isascii() and code.isalpha() for code in city_pair):
+        if not all(isinstance(code, str) and 3 <= len(code) <= 4 and code.isascii() and code.isalnum() for code in city_pair):
             raise CollectionError("携程页面缺少有效的搜索城市代码")
         if leg.return_date is not None:
             inbound = criteria.get("returnSegment")

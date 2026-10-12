@@ -99,6 +99,12 @@ class BackgroundBrowserLaunch:
                                background=True, windowState="minimized")
             bounds = self._cdp("Browser.getWindowForTarget", targetId=target["targetId"])
             if bounds.get("bounds", {}).get("windowState") != "minimized":
+                window_id = bounds.get("windowId")
+                if window_id is not None:
+                    with suppress(Exception):
+                        self._cdp("Browser.setWindowBounds", windowId=window_id, bounds={"windowState": "minimized"})
+                    bounds = self._cdp("Browser.getWindowForTarget", targetId=target["targetId"])
+            if bounds.get("bounds", {}).get("windowState") != "minimized":
                 raise CollectionError("浏览器不支持直接最小化启动，请更新 Chrome 或 Edge")
             options.existing_only()
             # Keep the owned connection so attachment failures can close Chrome
