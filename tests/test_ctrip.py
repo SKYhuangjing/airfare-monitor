@@ -73,6 +73,15 @@ class CtripParserTests(unittest.TestCase):
         flights, _, observed, eligible = parse_ctrip_payload(fixture(), leg(origin_airport_iata="SHA"), NOW)
         self.assertEqual((observed, eligible, flights), (18, 0, []))
 
+    def test_city_aggregation_accepts_physical_airports(self):
+        flights, _, observed, eligible = parse_ctrip_payload(
+            fixture(),
+            leg(origin_airport_iata="SHA", origin_airports=("PVG", "SHA")),
+            NOW,
+        )
+        self.assertEqual(eligible, 18)
+        self.assertEqual(len(flights), 18)
+
     def test_direct_time_window_and_layover_filters(self):
         flights, _, _, eligible = parse_ctrip_payload(fixture(), leg(direct_only=True), NOW)
         self.assertEqual(eligible, 9)

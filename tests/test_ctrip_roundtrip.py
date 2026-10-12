@@ -81,6 +81,14 @@ class CtripRoundTripParserTests(unittest.TestCase):
         self.assertEqual((flights[0].base_price_cny, flights[0].tax_cny), (Decimal("510"), Decimal("1393")))
         self.assertTrue(all(f.return_itinerary and f.return_itinerary.destination_airport_iata == "PVG" for f in flights))
 
+    def test_city_aggregation_roundtrip_accepts_physical_airports(self):
+        flights, _, observed, eligible = parse_ctrip_payload(
+            recorded(),
+            leg(origin_airport_iata="SHA", origin_airports=("PVG", "SHA")),
+            NOW,
+        )
+        self.assertEqual((observed, eligible, len(flights)), (1292, 1221, 200))
+
     def test_same_outbound_different_return_remains_distinct_and_price_counts_once(self):
         first = direct_row()
         second = copy.deepcopy(first)

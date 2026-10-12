@@ -141,7 +141,10 @@ def _direction(itinerary: dict[str, Any], leg: LegConfig) -> tuple[ItinerarySnap
     segments = [_segment(raw) for raw in raw_segments]
     if any(a.destination_airport_iata != b.origin_airport_iata for a, b in zip(segments, segments[1:])):
         return None  # Ground transfers between airports are not supported.
-    if segments[0].origin_airport_iata != leg.origin_airport_iata or segments[-1].destination_airport_iata != leg.destination_airport_iata:
+    if (
+        segments[0].origin_airport_iata not in leg.allowed_origin_airports
+        or segments[-1].destination_airport_iata not in leg.allowed_destination_airports
+    ):
         return None
     if segments[0].etd_local.date() != leg.departure_date or not leg.etd_window.contains(segments[0].etd_local.time()):
         return None
