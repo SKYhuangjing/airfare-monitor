@@ -10,6 +10,7 @@ from typing import Any, Callable
 from urllib.parse import quote
 
 from .config import BrowserSettings, MAX_STORED_CANDIDATES
+from .background_browser import BackgroundBrowserLaunch
 from .errors import CollectionError, IncompleteResponseError, ManualAttentionRequired
 from .market import resolve_market, resolve_provider
 from .ctrip_search import CtripSearchCapture, SEARCH_PREFIX, build_ctrip_search_url
@@ -19,7 +20,7 @@ from .parser import is_completed_payload, parse_completed_payload
 from .tongcheng_parser import is_completed_tongcheng_page_state, parse_tongcheng_page_state
 
 LISTEN_TARGET = "/touch/api/inter/wwwsearch"
-_VERIFICATION_MARKERS = ("验证码", "安全验证", "设备验证", "访问过于频繁", "captcha")
+_VERIFICATION_MARKERS = ("验证码", "安全验证", "设备验证", "访问过于频繁", "captcha", "whaleguard block")
 _SEARCH_INPUTS_SELECTOR = "css:#J_searchBox .inter-search input.serTxt"
 _SUGGESTION_SELECTOR = "css:div.m-suggest ul.m-suggest-bd li"
 _SEARCH_BUTTON_SELECTOR = "css:#J_searchBox .inter-search button.m-search-btn"
@@ -109,6 +110,7 @@ class QunarBrowserSession:
         self.settings = settings
         self.browser: Any = None
         self.tab: Any = None
+        self._background_launch: BackgroundBrowserLaunch | None = None
 
     def start(self) -> None:
         if self.browser is not None:
@@ -125,24 +127,43 @@ class QunarBrowserSession:
         options.set_local_port(self.settings.local_port)
         options.set_user_data_path(str(self.settings.user_data_path))
         options.headless(self.settings.headless)
-        self.browser = Chromium(addr_or_opts=options)
-        self.tab = self.browser.latest_tab
-        self.tab.set.timeouts(
-            base=self.settings.search_completion_timeout_seconds,
-            page_load=self.settings.page_load_timeout_seconds,
-        )
+        try:
+            if self.settings.background:
+                self._background_launch = BackgroundBrowserLaunch()
+                self._background_launch.start(options)
+            self.browser = Chromium(addr_or_opts=options)
+            self.tab = self.browser.latest_tab
+            if self.settings.background:
+                bounds = self.tab.run_cdp("Browser.getWindowForTarget")
+                if bounds.get("bounds", {}).get("windowState") != "minimized":
+                    raise CollectionError("后台浏览器窗口状态异常，已停止查询")
+            self.tab.set.timeouts(
+                base=self.settings.search_completion_timeout_seconds,
+                page_load=self.settings.page_load_timeout_seconds,
+            )
+        except Exception as exc:
+            try:
+                self.close()
+            except Exception:
+                pass
+            if self.settings.background and not isinstance(exc, CollectionError):
+                raise CollectionError("后台浏览器连接失败，请检查所选浏览器和独立浏览器空间") from exc
+            raise
 
     def restart(self) -> None:
         self.close()
         self.start()
 
     def close(self) -> None:
-        if self.browser is not None:
-            try:
+        try:
+            if self.browser is not None:
                 self.browser.quit()
-            finally:
-                self.browser = None
-                self.tab = None
+        finally:
+            self.browser = None
+            self.tab = None
+            if self._background_launch is not None:
+                self._background_launch.close()
+                self._background_launch = None
 
     def _verification_visible(self) -> bool:
         if self.tab is None:
@@ -161,6 +182,16 @@ class QunarBrowserSession:
     def _visible(self, selector: str) -> list[Any]:
         assert self.tab is not None
         return [element for element in self.tab.eles(selector) if element.states.is_displayed]
+
+    def _check_ctrip_page_attention(self) -> None:
+        if not self._verification_visible():
+            return
+        if self.settings.headless:
+            raise ManualAttentionRequired(
+                "携程页面被拦截或要求人工验证；当前为隐藏浏览器模式，"
+                "请在“系统状态”勾选“显示浏览器运行过程”，保存后打开独立浏览器人工检查并重新查询"
+            )
+        raise ManualAttentionRequired("携程页面被拦截或要求人工验证，请打开独立浏览器人工检查后重新查询")
 
     def _choose_first_suggestion(self, input_element: Any, code: str) -> None:
         input_element.click()
@@ -364,8 +395,7 @@ class QunarBrowserSession:
                 "departureDate:r.departureDate}:null}:null;")
             if isinstance(criteria, dict) and isinstance(criteria.get("transactionID"), str) and criteria["transactionID"]:
                 break
-            if self._verification_visible():
-                raise ManualAttentionRequired("携程页面需要人工验证")
+            self._check_ctrip_page_attention()
             time.sleep(0.2)
         if not isinstance(criteria, dict) or not criteria.get("transactionID"):
             raise IncompleteResponseError("等待携程页面搜索标识超时")
@@ -385,8 +415,7 @@ class QunarBrowserSession:
         while time.monotonic() < deadline:
             packet = self.tab.listen.wait(timeout=min(1, max(0.01, deadline - time.monotonic())), raise_err=False)
             if not packet:
-                if self._verification_visible():
-                    raise ManualAttentionRequired("携程页面需要人工验证")
+                self._check_ctrip_page_attention()
                 continue
             response = getattr(packet, "response", None)
             request = getattr(getattr(packet, "request", None), "postData", None)

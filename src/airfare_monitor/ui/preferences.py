@@ -40,7 +40,8 @@ class RuntimePreferencesForm(QWidget):
         self.interval_combo = QComboBox(objectName="runtimeIntervalCombo")
         for minutes in (30, 60, 120):
             self.interval_combo.addItem(f"{minutes} 分钟", minutes)
-        self.show_browser = QCheckBox("显示浏览器运行过程", objectName="runtimeOption")
+        self.show_browser = QCheckBox("显示浏览器运行过程（取消后后台最小化）", objectName="runtimeOption")
+        self.show_browser.setToolTip("取消后使用正常浏览器，从启动时保持最小化；任务栏可能保留图标。需要人工处理时可手动打开。")
         self.desktop_notifications = QCheckBox("开启桌面通知", objectName="runtimeOption")
         self.autostart = QCheckBox("登录 Windows 后自动启动", objectName="runtimeOption")
         self.browser_status = QLabel(objectName="muted", wordWrap=True)

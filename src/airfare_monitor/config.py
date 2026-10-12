@@ -81,6 +81,7 @@ class BrowserSettings:
         "&childNum={child_count}&cabinClass={cabin_class}"
     )
     executable_path: Path | None = None
+    background: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -453,6 +454,7 @@ def load_settings(path: str | Path, *, project_root: str | Path | None = None) -
         ),
         browser=BrowserSettings(
             headless=_boolean(_required(browser, "headless", "settings.browser"), "settings.browser.headless"),
+            background=_boolean(browser.get("background", False), "settings.browser.background"),
             user_data_path=relative_path(
                 _required(browser, "user_data_path", "settings.browser"), "settings.browser.user_data_path"
             ),

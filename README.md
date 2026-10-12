@@ -2,12 +2,12 @@
 
 一个面向个人旅行者的 Windows 航价监控工具。安装后可以直接在桌面界面中选择机场、设置日期和心理价位，并持续查看 CNY 含税最低价、历史变化和同一轮查询中的全部航班候选。
 
-> 当前版本：v0.7.0 · Windows 10/11 x64 · 个人工具 · 每台设备最多同时启用 10 条航程
+> 当前版本：v0.7.1 · Windows 10/11 x64 · 个人工具 · 每台设备最多同时启用 10 条航程
 
 ## 下载安装
 
-- [下载航价守望 v0.7.0 安装包](https://github.com/myitheart/airfare-monitor/releases/download/v0.7.0/AirfareMonitorSetup-0.7.0.exe)
-- [下载 SHA-256 校验文件](https://github.com/myitheart/airfare-monitor/releases/download/v0.7.0/AirfareMonitorSetup-0.7.0.exe.sha256)
+- [下载航价守望 v0.7.1 安装包](https://github.com/myitheart/airfare-monitor/releases/download/v0.7.1/AirfareMonitorSetup-0.7.1.exe)
+- [下载 SHA-256 校验文件](https://github.com/myitheart/airfare-monitor/releases/download/v0.7.1/AirfareMonitorSetup-0.7.1.exe.sha256)
 - [查看全部 GitHub Releases](https://github.com/myitheart/airfare-monitor/releases)
 
 当前安装包尚未进行商业代码签名，因此 Windows 可能显示“未知发布者”或 SmartScreen 提示。请确认下载地址属于本仓库，并在安装前核对 SHA-256。
@@ -27,7 +27,7 @@
 - 记录 CNY 含税总价、价格历史、心理价位和本轮全部航班候选。
 - 对候选航班按价格、时段和行程类型筛选，并可选择 2～3 个航班进行横向对比。
 - 支持桌面提醒和 SMTP 邮件提醒；SMTP 授权码保存在 Windows 系统凭据中。
-- 使用独立 Chrome/Edge Profile，可选择显示浏览器过程或后台隐藏运行。
+- 使用独立 Chrome/Edge Profile，可选择显示浏览器过程或后台最小化查询；后台模式使用正常浏览器，从启动时直接创建最小化窗口。
 - 关闭主窗口后继续在系统托盘运行，并提供立即查询、暂停/继续和完全退出入口。
 - 遇到验证码或设备验证时转为人工处理，不尝试绕过。
 
@@ -97,9 +97,13 @@
 
 - 用于查询的 Chrome/Edge；
 - 30/60/120 分钟自动查询间隔；
-- 显示或隐藏浏览器运行过程；
+- 显示浏览器运行过程，或取消勾选以后台最小化查询；
 - 桌面通知和登录 Windows 后自动启动；
 - 独立浏览器 Profile 与本地数据库位置。
+
+v0.7.1 起，取消“显示浏览器运行过程”会使用普通浏览器的最小化窗口，任务栏可能仍有图标。旧版的隐藏设置自动按这个方式执行，无需清除数据。遇到访问拦截或验证时，查询停止并提示人工检查；只有主动打开人工检查才显示窗口。若浏览器版本不支持直接最小化启动，工具会报错，不会退回弹出普通窗口。
+
+命令行配置中 `browser.headless` 仍表示真正的 Chrome 无头模式；后台最小化使用 `headless: false`、`background: true`。本机实测携程在无头模式下返回 `whaleguard block`，具体拦截依据未知。详情见[排查与后台模式验证记录](docs/CTRIP_HEADLESS_DIAGNOSIS.md)。
 
 ## “支持一下”说明
 

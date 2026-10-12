@@ -204,6 +204,25 @@ class CtripCaptureTests(unittest.TestCase):
 
 
 class CtripIntegrationOfflineTests(unittest.TestCase):
+    def test_whaleguard_block_stops_hidden_search_for_manual_attention(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            session = QunarBrowserSession(BrowserSettings(True, Path(tmp), 9437, 45, 75, 2, "https://example.test"))
+            session.start = Mock()
+            session.tab = Mock(url="https://flights.ctrip.com/online/list/oneway-sha-cju", title="Flight search")
+            session.tab.ele.return_value = SimpleNamespace(text="whaleguard block")
+            session.tab.run_js.return_value = None
+            with self.assertRaisesRegex(ManualAttentionRequired, "显示浏览器运行过程"):
+                session.collect(leg(), now=lambda: NOW)
+            session.tab.listen.wait.assert_not_called()
+            session.tab.listen.stop.assert_called_once()
+
+    def test_visible_whaleguard_block_is_also_manual_attention(self):
+        session = QunarBrowserSession(SimpleNamespace(headless=False))
+        session.tab = Mock(url="https://flights.ctrip.com", title="Flight search")
+        session.tab.ele.return_value = SimpleNamespace(text="WHALEGUARD BLOCK")
+        with self.assertRaisesRegex(ManualAttentionRequired, "人工检查"):
+            session._check_ctrip_page_attention()
+
     def test_verification_check_tolerates_drission_falsey_missing_body(self):
         class MissingBody:
             def __bool__(self):

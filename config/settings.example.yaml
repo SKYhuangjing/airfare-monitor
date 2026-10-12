@@ -7,6 +7,8 @@ schedule:
 browser:
   engine: drissionpage
   headless: false
+  # Normal browser created minimized, without opening a foreground window.
+  background: false
   user_data_path: data/browser-profile
   local_port: 9333
   page_load_timeout_seconds: 45

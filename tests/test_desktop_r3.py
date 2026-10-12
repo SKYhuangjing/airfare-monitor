@@ -229,11 +229,12 @@ class DesktopR3Tests(unittest.TestCase):
                 self.assertTrue(any(isinstance(event, VerificationBrowserOpened) for event in events))
                 self.assertEqual(opened[0].settings.user_data_path, paths.browser_profile)
                 self.assertFalse(opened[0].settings.headless)
+                self.assertFalse(opened[0].settings.background)
                 self.assertEqual(len(opened[0].tab.urls), 1)
                 coordinator._close_verification_browser()
                 self.assertTrue(opened[0].closed)
             self.assertEqual(
-                SettingsRepository(paths.settings_path, user_root=paths.user_root).load_core().browser.headless,
+                SettingsRepository(paths.settings_path, user_root=paths.user_root).load_core().browser.background,
                 True,
             )
 

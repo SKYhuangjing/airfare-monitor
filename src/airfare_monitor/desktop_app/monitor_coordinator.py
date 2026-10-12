@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from typing import Protocol
 
 from ..app_paths import AppPaths
-from ..config import AppSettings, load_routes, load_settings
+from ..config import AppSettings, load_routes
 from ..models import LegConfig, LegResult, RunReport
 from ..scheduler import AlreadyRunningError, ProcessLock
 from ..service import MonitorEventSink, MonitorService
@@ -20,6 +20,7 @@ from ..mail import send_report_with_credentials
 from .credential_store import CredentialStore, CredentialStoreError
 from .mail_profile import MailProfileRepository
 from .route_repository import RouteRepository, is_route_expired
+from .settings_repository import SettingsRepository
 from .events import (
     CoordinatorSnapshot,
     CoordinatorStateChanged,
@@ -268,8 +269,8 @@ class MonitorCoordinator:
             leg = next((item for item in legs if item.id == leg_id), None)
             if leg is None:
                 raise ValueError("受影响航程已不存在")
-            settings = load_settings(self.paths.settings_path, project_root=self.paths.user_root)
-            session = QunarBrowserSession(replace(settings.browser, headless=False))
+            settings = SettingsRepository(self.paths.settings_path, user_root=self.paths.user_root).load_core()
+            session = QunarBrowserSession(replace(settings.browser, headless=False, background=False))
             session.start()
             assert session.tab is not None
             url = build_provider_search_url(settings.browser, leg)
@@ -333,7 +334,7 @@ class MonitorCoordinator:
                 self._set_state("IDLE", message)
                 return
 
-            settings = load_settings(self.paths.settings_path, project_root=self.paths.user_root)
+            settings = SettingsRepository(self.paths.settings_path, user_root=self.paths.user_root).load_core()
             mail_profile = MailProfileRepository(
                 self.paths.settings_path, user_root=self.paths.user_root
             ).load()

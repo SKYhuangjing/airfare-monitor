@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -30,7 +30,13 @@ class SettingsRepository:
         self.user_root = Path(user_root)
 
     def load_core(self) -> AppSettings:
-        return load_settings(self.path, project_root=self.user_root)
+        settings = load_settings(self.path, project_root=self.user_root)
+        # Legacy desktop versions stored the unchecked window preference as headless.
+        # Normalize desktop execution only; explicit CLI headless stays available.
+        return replace(settings, browser=replace(
+            settings.browser, headless=False,
+            background=settings.browser.background or settings.browser.headless,
+        ))
 
     def load_desktop(self) -> DesktopSettings:
         raw = self._raw()
@@ -54,7 +60,10 @@ class SettingsRepository:
             browser_kind=kind,
             browser_path=browser_path or None,
             interval_minutes=interval_minutes,
-            show_browser=not _boolean(browser.get("headless", False), "browser.headless"),
+            show_browser=not (
+                _boolean(browser.get("headless", False), "browser.headless")
+                or _boolean(browser.get("background", False), "browser.background")
+            ),
             desktop_notifications=_boolean(desktop.get("desktop_notifications", True), "desktop_notifications"),
             autostart=_boolean(desktop.get("autostart", False), "autostart"),
             onboarding_completed=_boolean(
@@ -76,7 +85,8 @@ class SettingsRepository:
         if not isinstance(schedule, dict) or not isinstance(browser, dict):
             raise ValueError("settings.schedule 和 settings.browser 必须是映射")
         schedule["interval_minutes"] = value.interval_minutes
-        browser["headless"] = not value.show_browser
+        browser["headless"] = False
+        browser["background"] = not value.show_browser
         browser["executable_path"] = value.browser_path
         raw["desktop"] = {
             "browser_kind": value.browser_kind,
