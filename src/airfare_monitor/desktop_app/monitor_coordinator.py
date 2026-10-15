@@ -17,9 +17,16 @@ from ..scheduler import AlreadyRunningError, ProcessLock
 from ..service import MonitorEventSink, MonitorService
 from ..collector import QunarBrowserSession, build_provider_search_url
 from ..mail import send_report_with_credentials
-from .credential_store import CredentialStore, CredentialStoreError
+from ..serverchan import send_report_push
+from .credential_store import (
+    SERVERCHAN_ACCOUNT,
+    SERVERCHAN_SERVICE,
+    CredentialStore,
+    CredentialStoreError,
+)
 from .mail_profile import MailProfileRepository
 from .route_repository import RouteRepository, is_route_expired
+from .serverchan_profile import ServerChanProfileRepository
 from .settings_repository import SettingsRepository
 from .events import (
     CoordinatorSnapshot,
@@ -31,6 +38,7 @@ from .events import (
     LegStarted,
     ManualAttentionRequested,
     MailDeliveryFailed,
+    ServerChanPushFailed,
     VerificationBrowserOpened,
     MonitorCommand,
     MonitorCommandType,
@@ -374,6 +382,7 @@ class MonitorCoordinator:
             report, workbook = service.run_once(
                 send_email=settings.mail.enabled or desktop_mail is not None
             )
+            self._deliver_serverchan(report, settings)
             self._emit(CycleFinished(report, str(workbook), len(enabled)))
 
             if any(result.status.value == "manual_attention" for result in report.legs):
@@ -407,6 +416,33 @@ class MonitorCoordinator:
                 self._running = False
             if self._pause_requested.is_set():
                 self._set_state("PAUSED", "监控已暂停")
+
+    def _deliver_serverchan(self, report: RunReport, settings: AppSettings) -> None:
+        """Push the cycle summary through ServerChan with mail's own semantics:
+        prices and Excel are already persisted, and any delivery failure —
+        whatever its exception type — only surfaces as an event so the cycle
+        schedule can never stall (mail uses the same wide net in service.py)."""
+        try:
+            profile = ServerChanProfileRepository(
+                self.paths.settings_path, user_root=self.paths.user_root
+            ).load()
+        except (ValueError, OSError):
+            self._emit(ServerChanPushFailed("ProfileUnavailable"))
+            return
+        if not profile.enabled:
+            return
+        try:
+            sendkey = CredentialStore(SERVERCHAN_SERVICE).get_secret(SERVERCHAN_ACCOUNT)
+        except CredentialStoreError:
+            self._emit(ServerChanPushFailed("CredentialUnavailable"))
+            return
+        if not sendkey:
+            self._emit(ServerChanPushFailed("SendKeyUnavailable"))
+            return
+        try:
+            send_report_push(report, settings.mail, sendkey)
+        except Exception:  # noqa: BLE001 - HTTPException 等非 OSError 异常同样不得打断调度
+            self._emit(ServerChanPushFailed("DeliveryFailed"))
 
     def _interruptible_delay(self, seconds: float) -> None:
         if self._shutdown.wait(max(0, seconds)):

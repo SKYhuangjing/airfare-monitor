@@ -20,10 +20,11 @@ from ..desktop_app.controller import DesktopController
 from ..desktop_app.events import (
     CoordinatorStateChanged, CycleFinished, CycleStarted, FatalError, LegFinished, LegStarted,
     ManualAttentionRequested, NextRunScheduled, MailDeliveryFailed,
-    RoutesExpired, VerificationBrowserOpened,
+    RoutesExpired, ServerChanPushFailed, VerificationBrowserOpened,
 )
 from ..desktop_app.preferences import PreferencesManager
 from ..desktop_app.mail_profile import MailProfileRepository
+from ..desktop_app.serverchan_profile import ServerChanProfileRepository
 from ..desktop_app.diagnostics import export_diagnostic_zip
 from ..desktop_app.view_data import load_dashboard_data
 from ..desktop_app.route_repository import is_route_expired
@@ -176,6 +177,10 @@ class MainWindow(QMainWindow):
         self.notifications = NotificationsPage(
             self.preferences,
             MailProfileRepository(
+                self.preferences.repository.path,
+                user_root=self.preferences.repository.user_root,
+            ),
+            serverchan_repository=ServerChanProfileRepository(
                 self.preferences.repository.path,
                 user_root=self.preferences.repository.user_root,
             ),
@@ -449,6 +454,9 @@ class MainWindow(QMainWindow):
             self._switch_page(4)
         elif isinstance(event, MailDeliveryFailed):
             self.notifications.status.setText("价格和报告已保存，但邮件发送失败；请检查设置并主动测试通路。")
+            self.refresh_from_history()
+        elif isinstance(event, ServerChanPushFailed):
+            self.notifications.push_status.setText("价格和报告已保存，但方糖推送失败；请检查 SendKey 与网络。")
             self.refresh_from_history()
         elif isinstance(event, FatalError):
             self.dashboard.set_running(False)

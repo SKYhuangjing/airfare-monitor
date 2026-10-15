@@ -44,6 +44,12 @@ def _price(value: object) -> str:
     return "—" if value is None else f"¥{value:,.0f}"
 
 
+_REMINDER_TEXT = (
+    "国际航班显示采集时的含税总价；国内航班同时显示票面价、机建燃油和预计支付总价。"
+    "余票是平台搜索结果中的库存提示，其中“9张或以上”并非精确库存；库存和价格都可能变化，请务必在 App 中最终确认。"
+)
+
+
 def _flight_price_text(flight: FlightSnapshot | None) -> str:
     """Show Tongcheng domestic mandatory-fee detail; keep other sources compact."""
     if flight is None:
@@ -351,6 +357,17 @@ def _leg_plain(result: LegResult, confirmed: bool) -> list[str]:
     return lines
 
 
+def build_plain_body(report: RunReport) -> list[str]:
+    """Plain-text summary shared by the SMTP body and other push channels."""
+    plain = [f"采集时间：{report.finished_at:%Y-%m-%d %H:%M}", f"总体状态：{report.status}", ""]
+    for result in report.legs:
+        confirmed = result.leg.id in report.threshold_confirmed_leg_ids
+        plain.extend(_leg_plain(result, confirmed))
+        plain.append("")
+    plain.append(_REMINDER_TEXT)
+    return plain
+
+
 def build_message(
     report: RunReport,
     settings: MailSettings,
@@ -364,12 +381,10 @@ def build_message(
     message["From"] = sender
     message["To"] = ", ".join(recipients)
 
-    plain = [f"采集时间：{report.finished_at:%Y-%m-%d %H:%M}", f"总体状态：{report.status}", ""]
+    plain = build_plain_body(report)
     cards: list[str] = []
     for result in report.legs:
         confirmed = result.leg.id in report.threshold_confirmed_leg_ids
-        plain.extend(_leg_plain(result, confirmed))
-        plain.append("")
         minimum = result.minimum_total_cny
         threshold = result.leg.expected_total_price_cny
         threshold_delta = minimum - threshold if minimum is not None and threshold is not None else None
@@ -398,7 +413,6 @@ def build_message(
             </section>"""
         )
     reminder = "国际航班显示采集时的含税总价；国内航班同时显示票面价、机建燃油和预计支付总价。余票是平台搜索结果中的库存提示，其中“9张或以上”并非精确库存；库存和价格都可能变化，请务必在 App 中最终确认。"
-    plain.append(reminder)
     message.set_content("\n".join(plain))
     message.add_alternative(
         f"""<!doctype html><html><body style="font-family:Arial,'Microsoft YaHei',sans-serif;max-width:680px;margin:auto;padding:12px;background:#f1f5f9;color:#0f172a;line-height:1.55">

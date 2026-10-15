@@ -101,5 +101,10 @@ class MailDeliveryFailed:
 
 
 @dataclass(frozen=True, slots=True)
+class ServerChanPushFailed:
+    category: str
+
+
+@dataclass(frozen=True, slots=True)
 class VerificationBrowserOpened:
     leg_id: str

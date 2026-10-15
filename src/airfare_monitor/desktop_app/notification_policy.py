@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
-from .events import CycleFinished, FatalError, MailDeliveryFailed, ManualAttentionRequested
+from .events import CycleFinished, FatalError, MailDeliveryFailed, ManualAttentionRequested, ServerChanPushFailed
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,6 +25,8 @@ def alert_for_event(
         return DesktopAlert("需要人工完成页面确认", "请打开系统状态处理受影响航程。", 4)
     if isinstance(event, MailDeliveryFailed):
         return DesktopAlert("邮件发送失败", "价格和 Excel 已保存，请检查通知设置。", 3)
+    if isinstance(event, ServerChanPushFailed):
+        return DesktopAlert("方糖推送失败", "价格和 Excel 已保存，请检查通知设置里的 SendKey。", 3)
     if isinstance(event, FatalError):
         return DesktopAlert("监控运行异常", "请打开系统状态检查运行设置。", 4)
     if isinstance(event, CycleFinished):

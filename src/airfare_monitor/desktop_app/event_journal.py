@@ -16,6 +16,7 @@ from .events import (
     ManualAttentionRequested,
     MailDeliveryFailed,
     RoutesExpired,
+    ServerChanPushFailed,
     VerificationBrowserOpened,
 )
 
@@ -182,6 +183,8 @@ def _event_payload(
         return "fatal_error", "error", "监控运行异常，请打开系统状态检查", None, None
     if isinstance(event, MailDeliveryFailed):
         return "mail_failed", "warning", "价格和报告已保存，但邮件发送失败；请检查通知设置", None, None
+    if isinstance(event, ServerChanPushFailed):
+        return "serverchan_push_failed", "warning", "价格和报告已保存，但方糖推送失败；请检查通知设置里的 SendKey", None, None
     if isinstance(event, VerificationBrowserOpened):
         return "verification_opened", "notice", "已打开独立可见浏览器，等待人工完成页面确认", event.leg_id, None
     return None

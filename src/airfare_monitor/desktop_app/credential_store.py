@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 
 
 SERVICE_NAME = "AirfareMonitor/SMTP"
+SERVERCHAN_SERVICE = "AirfareMonitor/ServerChan"
+SERVERCHAN_ACCOUNT = "sendkey"
 
 # 操作系统级加密存储后端：Windows 凭据管理器 / macOS 钥匙串。
 # 其他后端（如明文/文件后端）必须拒绝，邮件凭据不允许降级。
@@ -20,6 +22,9 @@ class CredentialStoreError(RuntimeError):
 
 
 class CredentialStore:
+    def __init__(self, service: str = SERVICE_NAME):
+        self.service = service
+
     @staticmethod
     def _backend():
         import keyring
@@ -36,7 +41,7 @@ class CredentialStore:
     def get_secret(self, username: str) -> str | None:
         try:
             keyring = self._backend()
-            return keyring.get_password(SERVICE_NAME, username)
+            return keyring.get_password(self.service, username)
         except CredentialStoreError:
             raise
         except Exception as exc:
@@ -44,23 +49,23 @@ class CredentialStore:
 
     def save_secret(self, username: str, secret: str) -> None:
         if not username.strip() or not secret:
-            raise CredentialStoreError("邮箱账号和授权码不能为空")
+            raise CredentialStoreError("凭据账号和密钥不能为空")
         try:
             keyring = self._backend()
-            keyring.set_password(SERVICE_NAME, username.strip(), secret)
+            keyring.set_password(self.service, username.strip(), secret)
         except CredentialStoreError:
             raise
         except Exception as exc:
-            raise CredentialStoreError("无法保存 SMTP 授权码到系统凭据安全存储") from exc
+            raise CredentialStoreError("无法保存密钥到系统凭据安全存储") from exc
 
     def delete_secret(self, username: str) -> None:
         try:
             keyring = self._backend()
             try:
-                keyring.delete_password(SERVICE_NAME, username.strip())
+                keyring.delete_password(self.service, username.strip())
             except keyring.errors.PasswordDeleteError:
                 return
         except CredentialStoreError:
             raise
         except Exception as exc:
-            raise CredentialStoreError("无法删除 SMTP 授权码") from exc
+            raise CredentialStoreError("无法删除系统凭据中的密钥") from exc

@@ -12,11 +12,18 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..desktop_app.credential_store import CredentialStore, CredentialStoreError
+from ..desktop_app.credential_store import (
+    SERVERCHAN_ACCOUNT,
+    SERVERCHAN_SERVICE,
+    CredentialStore,
+    CredentialStoreError,
+)
 from ..desktop_app.mail_errors import friendly_mail_error
 from ..desktop_app.mail_profile import MailProfile, MailProfileRepository
 from ..desktop_app.preferences import PreferencesManager
+from ..desktop_app.serverchan_profile import ServerChanProfile, ServerChanProfileRepository
 from ..mail import SmtpCredentials, send_test_message
+from ..serverchan import friendly_serverchan_error, normalize_sendkey, send_test_push
 from .route_wizard import StepperSpinBox
 
 
@@ -96,6 +103,17 @@ class NotificationIcon(QWidget):
             painter.drawRoundedRect(QRectF(13, 17, 32, 24), 4, 4)
             painter.drawLine(QPointF(14, 19), QPointF(29, 31))
             painter.drawLine(QPointF(44, 19), QPointF(29, 31))
+        elif self.kind == "push":
+            painter.drawRoundedRect(QRectF(14, 14, 30, 22), 5, 5)
+            tail = QPainterPath(QPointF(20, 35))
+            tail.lineTo(QPointF(20, 43))
+            tail.lineTo(QPointF(28, 35))
+            painter.drawPath(tail)
+            painter.setBrush(stroke)
+            painter.drawEllipse(QPointF(22, 25), 2.2, 2.2)
+            painter.drawEllipse(QPointF(29, 25), 2.2, 2.2)
+            painter.drawEllipse(QPointF(36, 25), 2.2, 2.2)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
         else:
             path = QPainterPath(QPointF(29, 13))
             path.lineTo(42, 19)
@@ -125,6 +143,22 @@ class _MailTestWorker(QObject):
             self.finished.emit(True, "服务器连接、身份验证和投递请求均已完成。")
 
 
+class _PushTestWorker(QObject):
+    finished = Signal(bool, str)
+
+    def __init__(self, sendkey: str):
+        super().__init__()
+        self.sendkey = sendkey
+
+    def run(self) -> None:
+        try:
+            send_test_push(self.sendkey)
+        except Exception as exc:
+            self.finished.emit(False, friendly_serverchan_error(exc))
+        else:
+            self.finished.emit(True, "方糖服务已接受测试推送。")
+
+
 class NotificationsPage(QWidget):
     settings_saved = Signal()
 
@@ -133,16 +167,26 @@ class NotificationsPage(QWidget):
         preferences: PreferencesManager,
         repository: MailProfileRepository,
         credential_store: CredentialStore | None = None,
+        serverchan_repository: ServerChanProfileRepository | None = None,
+        serverchan_store: CredentialStore | None = None,
     ):
         super().__init__()
         self.setObjectName("pageCanvas")
         self.preferences = preferences
         self.repository = repository
         self.credential_store = credential_store or CredentialStore()
+        self.serverchan_repository = serverchan_repository or ServerChanProfileRepository(
+            preferences.repository.path, user_root=preferences.repository.user_root,
+        )
+        self.serverchan_store = serverchan_store or CredentialStore(SERVERCHAN_SERVICE)
         self._thread: QThread | None = None
         self._worker: _MailTestWorker | None = None
         self._pending_profile: MailProfile | None = None
         self._pending_secret: str | None = None
+        self._push_thread: QThread | None = None
+        self._push_worker: _PushTestWorker | None = None
+        self._pending_push_profile: ServerChanProfile | None = None
+        self._pending_push_secret: str | None = None
 
         root = QVBoxLayout(self)
         root.setContentsMargins(30, 27, 30, 22)
@@ -177,12 +221,12 @@ class NotificationsPage(QWidget):
         desktop_card.layout().addWidget(QLabel("触发事件", objectName="notificationFieldTitle"))
         events = QHBoxLayout()
         events.setSpacing(12)
-        for event_name in ("低价命中", "查询失败", "需要人工处理", "邮件失败"):
+        for event_name in ("低价命中", "查询失败", "需要人工处理", "邮件失败", "推送失败"):
             events.addWidget(QLabel(f"✓  {event_name}", objectName="eventChip"))
         events.addStretch()
         desktop_card.layout().addLayout(events)
         desktop_card.layout().addWidget(QLabel(
-            "提醒确认低价、部分/全部失败、需要人工处理及邮件发送失败。普通成功轮次不打扰；应用内最近动态始终保留。",
+            "提醒确认低价、部分/全部失败、需要人工处理及邮件/推送失败。普通成功轮次不打扰；应用内最近动态始终保留。",
             objectName="notificationHelp", wordWrap=True,
         ))
         layout.addWidget(desktop_card)
@@ -257,11 +301,57 @@ class NotificationsPage(QWidget):
         actions.addWidget(self.test_button)
         mail_card.layout().addLayout(actions)
         layout.addWidget(mail_card)
+
+        push_card = _card()
+        push_header = QHBoxLayout()
+        push_header.setSpacing(15)
+        push_header.addWidget(NotificationIcon("push"))
+        push_copy = QVBoxLayout()
+        push_copy.setSpacing(3)
+        push_copy.addWidget(QLabel("方糖推送（ServerChan）", objectName="notificationSectionTitle"))
+        push_copy.addWidget(QLabel("每轮采集完成后推送摘要到微信；SendKey 保存在系统安全凭据中。", objectName="notificationSubtitle"))
+        push_header.addLayout(push_copy, 1)
+        self.push_toggle = ToggleSwitch("方糖推送")
+        self.push_state = QLabel(objectName="switchState")
+        push_header.addWidget(self.push_toggle)
+        push_header.addWidget(self.push_state)
+        push_card.layout().addLayout(push_header)
+        self.push_key = QLineEdit()
+        self.push_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self.push_key.setPlaceholderText("SendKey；留空则使用已保存的 SendKey")
+        self.push_key_action = self.push_key.addAction(_eye_icon(), QLineEdit.ActionPosition.TrailingPosition)
+        self.push_key_action.setToolTip("显示或隐藏 SendKey")
+        self.push_key_action.triggered.connect(self._toggle_pushkey_visibility)
+        push_form = QGridLayout()
+        push_form.setHorizontalSpacing(24)
+        push_form.setVerticalSpacing(10)
+        push_form.addLayout(_field("SendKey", self.push_key), 0, 0, 1, 2)
+        push_card.layout().addLayout(push_form)
+        push_card.layout().addWidget(QLabel(
+            "在 sct.ftqq.com 微信扫码登录后，于「SendKey」页复制粘贴。推送内容与邮件通知同口径：每轮采集摘要都会发送，"
+            "SendKey 不会写入 YAML、日志、诊断文件或安装包。",
+            objectName="notificationHelp", wordWrap=True,
+        ))
+        push_actions = QHBoxLayout()
+        self.push_status = QLabel("尚未发送测试推送", objectName="muted", wordWrap=True)
+        push_actions.addWidget(self.push_status, 1)
+        self.push_reset_button = QPushButton("重置")
+        self.push_reset_button.clicked.connect(self._reset_push_form)
+        self.push_save_button = QPushButton("保存")
+        self.push_save_button.clicked.connect(self._save_push)
+        self.push_test_button = QPushButton("发送测试推送并保存", objectName="primary")
+        self.push_test_button.clicked.connect(self._test_push)
+        push_actions.addWidget(self.push_reset_button)
+        push_actions.addWidget(self.push_save_button)
+        push_actions.addWidget(self.push_test_button)
+        push_card.layout().addLayout(push_actions)
+        layout.addWidget(push_card)
         layout.addStretch()
         scroll.setWidget(host)
         root.addWidget(scroll, 1)
         self.desktop_toggle.toggled.connect(self._refresh_switch_labels)
         self.mail_toggle.toggled.connect(self._refresh_switch_labels)
+        self.push_toggle.toggled.connect(self._refresh_switch_labels)
         self.load()
 
     def load(self) -> None:
@@ -275,16 +365,23 @@ class NotificationsPage(QWidget):
         self.recipients.setText(", ".join(profile.recipients))
         self.attach.setChecked(profile.attach_excel)
         self.password.clear()
+        self.push_toggle.setChecked(self.serverchan_repository.load().enabled)
+        self.push_key.clear()
         self.desktop_toggle.setChecked(self.preferences.load().desktop_notifications)
         self._refresh_switch_labels()
 
     def _refresh_switch_labels(self) -> None:
         self.desktop_state.setText("已开启" if self.desktop_toggle.isChecked() else "已关闭")
         self.mail_state.setText("已开启" if self.mail_toggle.isChecked() else "已关闭")
+        self.push_state.setText("已开启" if self.push_toggle.isChecked() else "已关闭")
 
     def _toggle_password_visibility(self) -> None:
         hidden = self.password.echoMode() == QLineEdit.EchoMode.Password
         self.password.setEchoMode(QLineEdit.EchoMode.Normal if hidden else QLineEdit.EchoMode.Password)
+
+    def _toggle_pushkey_visibility(self) -> None:
+        hidden = self.push_key.echoMode() == QLineEdit.EchoMode.Password
+        self.push_key.setEchoMode(QLineEdit.EchoMode.Normal if hidden else QLineEdit.EchoMode.Password)
 
     def _reset_form(self) -> None:
         self.load()
@@ -403,12 +500,105 @@ class NotificationsPage(QWidget):
         self._worker = None
         self._thread = None
 
-    def finish_pending_test(self) -> bool:
-        """Keep a mail worker alive until it exits during normal application quit."""
+    def _reset_push_form(self) -> None:
+        self.push_toggle.setChecked(self.serverchan_repository.load().enabled)
+        self.push_key.clear()
+        self.push_status.setText("已恢复为上次保存的设置")
 
-        if self._thread is not None:
-            return self._thread.wait(35000)
+    def _save_push(self) -> bool:
+        try:
+            profile = ServerChanProfile(enabled=self.push_toggle.isChecked())
+            key_input = self.push_key.text().strip()
+            secret = normalize_sendkey(key_input) if key_input else None
+            if profile.enabled and secret is None and not self.serverchan_store.has_secret(SERVERCHAN_ACCOUNT):
+                raise CredentialStoreError("请填写方糖 SendKey 并保存")
+            self._commit_push(profile, secret)
+        except (ValueError, CredentialStoreError, OSError) as exc:
+            QMessageBox.warning(self, "方糖设置未保存", str(exc))
+            return False
+        self.push_status.setText("方糖设置已保存；可点击测试推送确认通路")
         return True
+
+    def _commit_push(self, profile: ServerChanProfile, secret: str | None) -> None:
+        if secret:
+            old_secret = self.serverchan_store.get_secret(SERVERCHAN_ACCOUNT)
+            self.serverchan_store.save_secret(SERVERCHAN_ACCOUNT, secret)
+            try:
+                self.serverchan_repository.save(profile)
+            except Exception:
+                if old_secret:
+                    self.serverchan_store.save_secret(SERVERCHAN_ACCOUNT, old_secret)
+                else:
+                    self.serverchan_store.delete_secret(SERVERCHAN_ACCOUNT)
+                raise
+        else:
+            self.serverchan_repository.save(profile)
+        self.push_key.clear()
+        self.settings_saved.emit()
+
+    def _test_push(self) -> None:
+        if self._push_thread is not None:
+            return
+        key_input = self.push_key.text().strip()
+        try:
+            sendkey = (
+                normalize_sendkey(key_input) if key_input
+                else (self.serverchan_store.get_secret(SERVERCHAN_ACCOUNT) or "")
+            )
+            if not sendkey:
+                raise CredentialStoreError("请填写方糖 SendKey 并保存")
+        except (ValueError, CredentialStoreError) as exc:
+            QMessageBox.warning(self, "无法测试推送", str(exc))
+            return
+        self._pending_push_profile = ServerChanProfile(enabled=self.push_toggle.isChecked())
+        self._pending_push_secret = key_input or None
+        self.push_toggle.setEnabled(False)
+        self.push_test_button.setEnabled(False)
+        self.push_save_button.setEnabled(False)
+        self.push_reset_button.setEnabled(False)
+        self.push_status.setText("正在向方糖服务发送测试推送；窗口仍可正常使用…")
+        thread = QThread(self)
+        worker = _PushTestWorker(sendkey)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.finished.connect(self._push_test_finished)
+        worker.finished.connect(thread.quit, Qt.ConnectionType.DirectConnection)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(self._push_thread_finished)
+        thread.finished.connect(thread.deleteLater)
+        self._push_thread = thread
+        self._push_worker = worker
+        thread.start()
+
+    def _push_test_finished(self, success: bool, message: str) -> None:
+        self.push_status.setText(message)
+        if success and self._pending_push_profile is not None:
+            try:
+                self._commit_push(self._pending_push_profile, self._pending_push_secret)
+            except (ValueError, CredentialStoreError, OSError):
+                self.push_status.setText("测试推送已发送，但设置保存失败；请重新保存。")
+            else:
+                self.push_status.setText("测试成功，设置已保存：微信里应能收到测试消息。")
+        self._pending_push_profile = None
+        self._pending_push_secret = None
+        self.push_toggle.setEnabled(True)
+        self.push_test_button.setEnabled(True)
+        self.push_save_button.setEnabled(True)
+        self.push_reset_button.setEnabled(True)
+
+    def _push_thread_finished(self) -> None:
+        self._push_worker = None
+        self._push_thread = None
+
+    def finish_pending_test(self) -> bool:
+        """Keep mail/push workers alive until they exit during normal quit."""
+
+        finished = True
+        if self._thread is not None:
+            finished = self._thread.wait(35000) and finished
+        if self._push_thread is not None:
+            finished = self._push_thread.wait(35000) and finished
+        return finished
 
 
 def _card() -> QFrame:
