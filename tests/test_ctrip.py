@@ -324,6 +324,58 @@ class CtripIntegrationOfflineTests(unittest.TestCase):
             with closing(sqlite3.connect(path)) as db:
                 self.assertEqual(db.execute("SELECT count(*) FROM flight_snapshots").fetchone()[0], 18)
 
+    def test_ctrip_baggage_parsed_and_inclusive_price_calculated(self):
+        data = fixture()
+        row = data["data"]["flightItineraryList"][0]
+        data["data"]["flightItineraryList"] = [row]
+        row["priceList"][0]["baggage"] = {
+            "dataList": [
+                {"segmentNo": 1, "adultBaggage": {"checkedBaggage": {"baggageContent": "无免费行李额"}}}
+            ]
+        }
+        row["priceList"][1]["baggage"] = {
+            "dataList": [
+                {"segmentNo": 1, "adultBaggage": {"checkedBaggage": {"baggageContent": "每人1件,每件23公斤"}}}
+            ]
+        }
+        flights, _, _, _ = parse_ctrip_payload(data, leg(top_n=50), NOW)
+        self.assertTrue(len(flights) > 0)
+        f0 = flights[0]
+        self.assertEqual(f0.free_baggage_piece, 0)
+        self.assertEqual(f0.free_baggage_weight, "0kg")
+        self.assertEqual(f0.luggage_inclusive_price_cny, Decimal("1413"))
+
+    def test_ctrip_roundtrip_asymmetric_baggage(self):
+        data = fixture()
+        row = data["data"]["flightItineraryList"][0]
+        data["data"]["flightItineraryList"] = [row]
+        inbound_seg = {
+            "segmentNo": 2, "crossDays": 0, "transferCount": 0, "stopCount": 0, "duration": 120,
+            "flightList": [
+                {
+                    "flightNo": "TW812", "sequenceNo": 1, "marketAirlineCode": "TW",
+                    "departureCityCode": "CJU", "arrivalCityCode": "SHA",
+                    "departureAirportCode": "CJU", "arrivalAirportCode": "PVG",
+                    "departureDateTime": "2026-10-18 10:00:00",
+                    "arrivalDateTime": "2026-10-18 12:00:00",
+                    "duration": 120, "transferDuration": 0, "stopCount": 0
+                }
+            ]
+        }
+        row["flightSegments"].append(inbound_seg)
+        row["priceList"][0]["baggage"] = {
+            "dataList": [
+                {"segmentNo": 1, "adultBaggage": {"checkedBaggage": {"baggageContent": "每人2件,每件23公斤"}}},
+                {"segmentNo": 2, "adultBaggage": {"checkedBaggage": {"baggageContent": "无免费行李额"}}},
+            ]
+        }
+        rt_leg = leg(return_date=date(2026, 10, 18), return_etd_window=EtdWindow(time(0), time(23, 59)), top_n=50)
+        flights, _, _, _ = parse_ctrip_payload(data, rt_leg, NOW)
+        self.assertTrue(len(flights) > 0)
+        f = flights[0]
+        self.assertIsNone(f.free_baggage_piece)
+        self.assertEqual(f.free_baggage_weight, "去程2件23kg/返程无额度")
+
 
 if __name__ == "__main__":
     unittest.main()

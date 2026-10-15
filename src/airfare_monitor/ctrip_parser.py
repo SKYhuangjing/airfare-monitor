@@ -131,6 +131,78 @@ def _price(price: dict[str, Any], leg: LegConfig) -> tuple[Decimal, Decimal] | N
     return base, tax
 
 
+def _parse_baggage_content(content: str | None) -> tuple[int | None, str | None]:
+    if not content:
+        return None, None
+    text = content.strip()
+    if not text:
+        return None, None
+    if "无免费" in text or "无行李" in text or text in ("0", "0件", "0kg", "0KG"):
+        return 0, "0kg"
+    pieces = None
+    m_piece = re.search(r"每人(\d+)件", text)
+    if m_piece:
+        pieces = int(m_piece.group(1))
+    weight = None
+    m_weight = re.search(r"(?:每件|总重不超过|不超过)?(\d+(?:\.\d+)?)\s*(?:公斤|KG|kg)", text)
+    if m_weight:
+        weight = f"{m_weight.group(1)}kg"
+    return pieces, weight
+
+
+def _extract_ctrip_baggage(baggage: Any, is_round_trip: bool) -> tuple[int | None, str | None]:
+    if not isinstance(baggage, dict):
+        return None, None
+    data_list = baggage.get("dataList")
+    if not isinstance(data_list, list) or not data_list:
+        return None, None
+
+    by_seg: dict[int, list[dict[str, Any]]] = {}
+    for item in data_list:
+        if isinstance(item, dict):
+            seg_no = item.get("segmentNo", 1)
+            by_seg.setdefault(seg_no, []).append(item)
+
+    def extract_seg(items: list[dict[str, Any]]) -> tuple[int | None, str | None]:
+        for it in items:
+            adult = it.get("adultBaggage")
+            if isinstance(adult, dict):
+                checked = adult.get("checkedBaggage")
+                if isinstance(checked, dict):
+                    content = checked.get("baggageContent")
+                    if content:
+                        return _parse_baggage_content(str(content))
+        return None, None
+
+    out_piece, out_weight = extract_seg(by_seg.get(1, []))
+    if not is_round_trip:
+        return out_piece, out_weight
+
+    in_piece, in_weight = extract_seg(by_seg.get(2, []))
+    if in_piece is None and in_weight is None:
+        return out_piece, out_weight
+
+    if out_piece == in_piece and out_weight == in_weight:
+        return out_piece, out_weight
+
+    if (out_piece == 0 or out_weight in ("0", "0kg")) and (in_piece == 0 or in_weight in ("0", "0kg")):
+        return 0, "0kg"
+
+    def desc(p: int | None, w: str | None) -> str:
+        if p == 0 or w in ("0", "0kg"):
+            return "无额度"
+        parts: list[str] = []
+        if p is not None and p > 0:
+            parts.append(f"{p}件")
+        if w and w not in ("0", "0kg"):
+            parts.append(w)
+        return "".join(parts) or "未知"
+
+    out_desc = desc(out_piece, out_weight)
+    in_desc = desc(in_piece, in_weight)
+    return None, f"去程{out_desc}/返程{in_desc}"
+
+
 def _direction(itinerary: dict[str, Any], leg: LegConfig) -> tuple[ItinerarySnapshot, list[Segment]] | None:
     raw_segments = itinerary.get("flightList")
     if not isinstance(raw_segments, list) or not raw_segments or not all(isinstance(raw, dict) for raw in raw_segments):
@@ -197,12 +269,30 @@ def parse_ctrip_payload(
         prices = row.get("priceList")
         if not isinstance(prices, list) or not all(isinstance(price, dict) for price in prices):
             raise ParseError("携程行程缺少有效 priceList")
+        parsed_prices: list[tuple[dict[str, Any], Decimal, Decimal, int | None, int | None, str | None]] = []
         for price in prices:
             amounts = _price(price, leg)
             if amounts is None:
                 continue
             base, tax = amounts
             seats = price.get("ticketCount")
+            piece, weight = _extract_ctrip_baggage(price.get("baggage"), leg.is_round_trip)
+            parsed_prices.append((price, base, tax, seats, piece, weight))
+
+        luggage_prices = [
+            base + tax for _, base, tax, _, piece, weight in parsed_prices
+            if (piece is not None and piece > 0) or (weight and weight not in ("0", "0kg") and "无" not in weight)
+        ]
+        min_luggage_price = min(luggage_prices) if luggage_prices else None
+
+        for price, base, tax, seats, piece, weight in parsed_prices:
+            total = base + tax
+            is_zero = (piece == 0) or (weight in ("0", "0kg"))
+            inclusive_price = (
+                min_luggage_price
+                if (is_zero and min_luggage_price is not None and min_luggage_price > total)
+                else None
+            )
             flights.append(FlightSnapshot(
                 flight_signature=_signature(segments + inbound_segments),
                 flight_codes=tuple(segment.flight_code for segment in segments),
@@ -212,21 +302,23 @@ def parse_ctrip_payload(
                 departure_date=leg.departure_date, etd_local=segments[0].etd_local,
                 eta_local=segments[-1].eta_local, duration_minutes=itinerary.duration_minutes,
                 segment_count=len(segments), is_direct=itinerary.is_direct,
-                base_price_cny=base, tax_cny=tax, total_price_cny=base + tax,
+                base_price_cny=base, tax_cny=tax, total_price_cny=total,
                 currency_code="CNY", remaining_seats=str(seats) if seats is not None else None,
-                free_baggage_piece=None, free_baggage_weight=None,
+                free_baggage_piece=piece, free_baggage_weight=weight,
                 source_domain="ctrip.com", captured_at=captured_at,
                 connection_airports=tuple(segment.destination_airport_iata for segment in segments[:-1]),
                 layover_minutes=itinerary.layover_minutes,
                 return_itinerary=inbound_snapshot,
                 seat_availability=SeatAvailability(count_hint=seats) if seats is not None else None,
+                luggage_inclusive_price_cny=inclusive_price,
                 # Only a small business allowlist is persisted, never routeSearchToken,
                 # searchCriteriaToken, policyToken or request headers.
                 raw_item={"provider": "ctrip", "eligibility": "NOR", "cabin": price["cabin"],
                           "adultPrice": price["adultPrice"], "adultTax": price["adultTax"],
                           "childPrice": price.get("childPrice"), "childTax": price.get("childTax"),
                           "has_service_package": bool(price.get("servicePackage")),
-                          "product_name": (price.get("productType") or {}).get("name")},
+                          "product_name": (price.get("productType") or {}).get("name"),
+                          "baggage": price.get("baggage")},
             ))
     ranked, preferred, eligible = rank_flights(flights, leg)
     return ranked, preferred, len(rows), eligible

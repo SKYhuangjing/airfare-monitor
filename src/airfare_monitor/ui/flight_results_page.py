@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 
 from ..market import resolve_market, source_label
 from ..models import LegConfig
+from ..search_link import search_site_label
 from ..storage import SQLiteStore
 
 
@@ -170,7 +171,7 @@ class FlightResultsPage(QWidget):
         self.route = route
         self.selected.clear()
         if self.on_open_search is not None:
-            self.open_site_button.setText(f"在{'同程' if _market(route) == 'domestic' else '去哪儿'}打开")
+            self.open_site_button.setText(f"在{search_site_label(route)}打开")
             self.open_site_button.show()
         arrow = "⇄" if route.return_date else "→"
         origin = route.origin_name_zh or route.origin_airport_iata
@@ -477,9 +478,12 @@ def _luggage_price_tiers(item: dict[str, object]) -> list[str]:
         return []  # 接口完全未提供行李信息
     tiers: list[str] = []
     if piece_count > 0 or weight:
-        free_text = f"本价含免费托运 {piece_count or '—'} 件"
-        if weight:
-            free_text += f" / {weight}"
+        if piece_count > 0:
+            free_text = f"本价含免费托运 {piece_count} 件"
+            if weight:
+                free_text += f" / {weight}"
+        else:
+            free_text = f"本价含免费托运 {weight}"
         tiers.append(free_text)
     else:
         tiers.append("本价不含免费托运行李")
