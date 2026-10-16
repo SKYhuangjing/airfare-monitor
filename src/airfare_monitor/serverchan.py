@@ -99,7 +99,7 @@ def send_test_push(sendkey: str) -> None:
     send_serverchan_message(
         sendkey,
         "航价守望推送测试",
-        "方糖推送测试成功。此推送由您在设置页主动发起；开启后每轮采集摘要都会推送到微信。",
+        "方糖推送测试成功。此推送由您在设置页主动发起；开启后，航程低于心理价位时才会推送到微信。",
     )
 
 

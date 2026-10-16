@@ -309,7 +309,7 @@ class NotificationsPage(QWidget):
         push_copy = QVBoxLayout()
         push_copy.setSpacing(3)
         push_copy.addWidget(QLabel("方糖推送（ServerChan）", objectName="notificationSectionTitle"))
-        push_copy.addWidget(QLabel("每轮采集完成后推送摘要到微信；SendKey 保存在系统安全凭据中。", objectName="notificationSubtitle"))
+        push_copy.addWidget(QLabel("低价命中时推送微信提醒；SendKey 保存在系统安全凭据中。", objectName="notificationSubtitle"))
         push_header.addLayout(push_copy, 1)
         self.push_toggle = ToggleSwitch("方糖推送")
         self.push_state = QLabel(objectName="switchState")
@@ -328,8 +328,8 @@ class NotificationsPage(QWidget):
         push_form.addLayout(_field("SendKey", self.push_key), 0, 0, 1, 2)
         push_card.layout().addLayout(push_form)
         push_card.layout().addWidget(QLabel(
-            "在 sct.ftqq.com 微信扫码登录后，于「SendKey」页复制粘贴。推送内容与邮件通知同口径：每轮采集摘要都会发送，"
-            "SendKey 不会写入 YAML、日志、诊断文件或安装包。",
+            "在 sct.ftqq.com 微信扫码登录后，于「SendKey」页复制粘贴。仅在航程低于心理价位并二次确认后推送命中航程摘要；"
+            "相同价格不会重复提醒。SendKey 不会写入 YAML、日志、诊断文件或安装包。",
             objectName="notificationHelp", wordWrap=True,
         ))
         push_actions = QHBoxLayout()

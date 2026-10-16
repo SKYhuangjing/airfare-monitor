@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QLabel
 
 from airfare_monitor.app_paths import AppPaths
 from airfare_monitor.config import MailSettings
@@ -32,7 +32,9 @@ from airfare_monitor.desktop_app.serverchan_profile import (
 )
 from airfare_monitor.desktop_app.settings_repository import SettingsRepository
 from airfare_monitor.desktop_app.preferences import PreferencesManager
-from airfare_monitor.models import EtdWindow, LegConfig, LegResult, LegStatus, RunReport, RunStatus
+from airfare_monitor.models import (
+    EtdWindow, FlightSnapshot, LegConfig, LegResult, LegStatus, RunReport, RunStatus,
+)
 from airfare_monitor.serverchan import (
     SERVERCHAN_API_BASE,
     ServerChanError,
@@ -41,7 +43,6 @@ from airfare_monitor.serverchan import (
     normalize_sendkey,
     send_serverchan_message,
 )
-from airfare_monitor.service import MonitorService
 from airfare_monitor.ui.notifications_page import NotificationsPage
 
 
@@ -190,7 +191,20 @@ class ProfileTests(unittest.TestCase):
 
 
 class CoordinatorPushTests(unittest.TestCase):
-    def test_pushes_report_each_cycle_with_mail_wording(self):
+    def _coordinator(self, paths, prices):
+        counter = {"index": 0}
+
+        def factory(legs, settings, sink, delay):
+            return _HitService(prices, counter)
+
+        return MonitorCoordinator(
+            paths,
+            service_factory=factory,
+            now=lambda: datetime(2026, 10, 15, 10),
+            jitter=lambda low, high: 0,
+        )
+
+    def test_pushes_only_confirmed_hits_and_dedupes_same_price(self):
         with tempfile.TemporaryDirectory() as temp:
             paths = _paths(temp)
             paths.initialize()
@@ -198,14 +212,8 @@ class CoordinatorPushTests(unittest.TestCase):
             ServerChanProfileRepository(paths.settings_path, user_root=paths.user_root).save(
                 ServerChanProfile(enabled=True)
             )
-            coordinator = MonitorCoordinator(
-                paths,
-                service_factory=lambda legs, settings, sink, delay: MonitorService(
-                    legs, settings, browser=_Browser(), event_sink=sink,
-                    sleep=delay, now=lambda: datetime(2026, 10, 15, 10),
-                ),
-                now=lambda: datetime(2026, 10, 15, 10),
-                jitter=lambda low, high: 0,
+            coordinator = self._coordinator(
+                paths, [Decimal("900"), Decimal("900"), Decimal("800")]
             )
             with patch(
                 "airfare_monitor.desktop_app.monitor_coordinator.CredentialStore",
@@ -215,23 +223,47 @@ class CoordinatorPushTests(unittest.TestCase):
             ) as push:
                 coordinator._execute_cycle(None)
                 push.assert_called_once()
-                report = push.call_args.args[0]
-                self.assertEqual(report.legs[0].leg.id, "r3-leg")
+                pushed_report = push.call_args.args[0]
+                self.assertEqual(len(pushed_report.legs), 1)
+                self.assertEqual(pushed_report.legs[0].leg.id, "r3-leg")
+                self.assertIn("r3-leg", pushed_report.threshold_confirmed_leg_ids)
+
+                coordinator._execute_cycle(None)  # 同价命中：不重复打扰微信
+                push.assert_called_once()
+
+                coordinator._execute_cycle(None)  # 价格再降：重新推送
+                self.assertEqual(push.call_count, 2)
+                self.assertEqual(
+                    push.call_args.args[0].legs[0].minimum_total_cny, Decimal("800")
+                )
+
+    def test_cycle_without_hits_never_pushes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            paths = _paths(temp)
+            paths.initialize()
+            RouteRepository(paths.routes_path).save([_leg()])
+            ServerChanProfileRepository(paths.settings_path, user_root=paths.user_root).save(
+                ServerChanProfile(enabled=True)
+            )
+            coordinator = self._coordinator(paths, [Decimal("1200")])
+            events: list[object] = []
+            coordinator.subscribe(events.append)
+            with patch(
+                "airfare_monitor.desktop_app.monitor_coordinator.CredentialStore",
+                return_value=_MemoryCredentials({SERVERCHAN_ACCOUNT: SENDKEY}),
+            ), patch(
+                "airfare_monitor.desktop_app.monitor_coordinator.send_report_push"
+            ) as push:
+                coordinator._execute_cycle(None)
+                push.assert_not_called()
+            self.assertFalse(any(isinstance(event, ServerChanPushFailed) for event in events))
 
     def test_disabled_or_missing_key_never_raises_and_emits_event(self):
         with tempfile.TemporaryDirectory() as temp:
             paths = _paths(temp)
             paths.initialize()
             RouteRepository(paths.routes_path).save([_leg()])
-            coordinator = MonitorCoordinator(
-                paths,
-                service_factory=lambda legs, settings, sink, delay: MonitorService(
-                    legs, settings, browser=_Browser(), event_sink=sink,
-                    sleep=delay, now=lambda: datetime(2026, 10, 15, 10),
-                ),
-                now=lambda: datetime(2026, 10, 15, 10),
-                jitter=lambda low, high: 0,
-            )
+            coordinator = self._coordinator(paths, [Decimal("900")])
             with patch(
                 "airfare_monitor.desktop_app.monitor_coordinator.send_report_push"
             ) as push:
@@ -261,15 +293,7 @@ class CoordinatorPushTests(unittest.TestCase):
             ServerChanProfileRepository(paths.settings_path, user_root=paths.user_root).save(
                 ServerChanProfile(enabled=True)
             )
-            coordinator = MonitorCoordinator(
-                paths,
-                service_factory=lambda legs, settings, sink, delay: MonitorService(
-                    legs, settings, browser=_Browser(), event_sink=sink,
-                    sleep=delay, now=lambda: datetime(2026, 10, 15, 10),
-                ),
-                now=lambda: datetime(2026, 10, 15, 10),
-                jitter=lambda low, high: 0,
-            )
+            coordinator = self._coordinator(paths, [Decimal("900")])
             events: list[object] = []
             coordinator.subscribe(events.append)
             with patch(
@@ -292,15 +316,7 @@ class CoordinatorPushTests(unittest.TestCase):
             ServerChanProfileRepository(paths.settings_path, user_root=paths.user_root).save(
                 ServerChanProfile(enabled=True)
             )
-            coordinator = MonitorCoordinator(
-                paths,
-                service_factory=lambda legs, settings, sink, delay: MonitorService(
-                    legs, settings, browser=_Browser(), event_sink=sink,
-                    sleep=delay, now=lambda: datetime(2026, 10, 15, 10),
-                ),
-                now=lambda: datetime(2026, 10, 15, 10),
-                jitter=lambda low, high: 0,
-            )
+            coordinator = self._coordinator(paths, [Decimal("900")])
             events: list[object] = []
             coordinator.subscribe(events.append)
             with patch(
@@ -353,6 +369,11 @@ class NotificationsPageTests(unittest.TestCase):
             self.assertEqual(page.push_state.text(), "已开启")
             self.assertEqual(page.push_key.echoMode(), page.push_key.EchoMode.Password)
             self.assertEqual(page.push_test_button.text(), "发送测试推送并保存")
+            help_texts = " ".join(
+                label.text() for label in page.findChildren(QLabel)
+                if "心理价位" in label.text()
+            )
+            self.assertIn("相同价格不会重复提醒", help_texts)
             self.assertNotIn(SENDKEY, paths.settings_path.read_text(encoding="utf-8"))
             page.close()
 
@@ -507,15 +528,40 @@ class NotificationsPageTests(unittest.TestCase):
             page.close()
 
 
-class _Browser:
-    def collect(self, leg, now):
-        return LegResult(leg, LegStatus.SUCCESS, now(), completed_response=True)
+class _HitService:
+    """Fake monitor service emitting fixed-price reports to drive hit logic."""
+
+    def __init__(self, prices, counter):
+        self.prices = prices
+        self.counter = counter
+
+    def run_once(self, *, send_email: bool = False):
+        index = min(self.counter["index"], len(self.prices) - 1)
+        self.counter["index"] += 1
+        return _hit_report(self.prices[index]), None
 
     def close(self):
         pass
 
-    def restart(self):
-        pass
+
+def _hit_report(price: Decimal) -> RunReport:
+    leg = _leg()
+    now = datetime(2026, 10, 15, 10, 0)
+    flight = FlightSnapshot(
+        flight_signature="hit-sig", flight_codes=("MU123",), carrier_codes=("MU",),
+        origin_airport_iata="SHA", destination_airport_iata="XMN",
+        departure_date=date(2026, 12, 1), etd_local=now, eta_local=now,
+        duration_minutes=120, segment_count=1, is_direct=True,
+        base_price_cny=price, tax_cny=Decimal("0"), total_price_cny=price,
+        currency_code="CNY", remaining_seats=None, free_baggage_piece=None,
+        free_baggage_weight=None, source_domain="ctrip.com", captured_at=now,
+    )
+    result = LegResult(leg, LegStatus.SUCCESS, now, flights=[flight], completed_response=True)
+    confirmed = {leg.id} if price <= leg.expected_total_price_cny else set()
+    return RunReport(
+        run_id="run-hit", started_at=now, finished_at=now, status=RunStatus.SUCCESS,
+        legs=[result], threshold_confirmed_leg_ids=confirmed,
+    )
 
 
 class _MemoryCredentials:

@@ -13,6 +13,7 @@ from typing import Protocol
 from ..app_paths import AppPaths
 from ..config import AppSettings, load_routes
 from ..models import LegConfig, LegResult, RunReport
+from decimal import Decimal
 from ..scheduler import AlreadyRunningError, ProcessLock
 from ..service import MonitorEventSink, MonitorService
 from ..collector import QunarBrowserSession, build_provider_search_url
@@ -106,6 +107,8 @@ class MonitorCoordinator:
         self._run_request_pending = False
         self._next_run_at: datetime | None = None
         self._verification_session: QunarBrowserSession | None = None
+        # 方糖推送去重：每条航程上次已推送的命中价；同价不重复打扰微信。
+        self._last_pushed_hit_prices: dict[str, Decimal] = {}
 
     def subscribe(self, listener: Callable[[object], None]) -> None:
         self._listeners.append(listener)
@@ -418,10 +421,30 @@ class MonitorCoordinator:
                 self._set_state("PAUSED", "监控已暂停")
 
     def _deliver_serverchan(self, report: RunReport, settings: AppSettings) -> None:
-        """Push the cycle summary through ServerChan with mail's own semantics:
-        prices and Excel are already persisted, and any delivery failure —
-        whatever its exception type — only surfaces as an event so the cycle
-        schedule can never stall (mail uses the same wide net in service.py)."""
+        """Push only newly noteworthy low-price hits through ServerChan: the
+        push fires when a leg is confirmed below its expected price and its
+        hit price differs from the last pushed one. Prices and Excel are
+        already persisted, and any delivery failure — whatever its exception
+        type — only surfaces as an event so the cycle schedule can never
+        stall."""
+        confirmed_ids = report.threshold_confirmed_leg_ids
+        # 价格回升退出命中的航程从去重表中移除：再次降到同价时值得重新提醒。
+        self._last_pushed_hit_prices = {
+            leg_id: price
+            for leg_id, price in self._last_pushed_hit_prices.items()
+            if leg_id in confirmed_ids
+        }
+        hits = [result for result in report.legs if result.leg.id in confirmed_ids]
+        noteworthy = {
+            result.leg.id: result.minimum_total_cny
+            for result in hits
+            if result.minimum_total_cny is not None
+        }
+        if not noteworthy or all(
+            self._last_pushed_hit_prices.get(leg_id) == price
+            for leg_id, price in noteworthy.items()
+        ):
+            return
         try:
             profile = ServerChanProfileRepository(
                 self.paths.settings_path, user_root=self.paths.user_root
@@ -440,7 +463,8 @@ class MonitorCoordinator:
             self._emit(ServerChanPushFailed("SendKeyUnavailable"))
             return
         try:
-            send_report_push(report, settings.mail, sendkey)
+            send_report_push(replace(report, legs=hits), settings.mail, sendkey)
+            self._last_pushed_hit_prices = noteworthy
         except Exception:  # noqa: BLE001 - HTTPException 等非 OSError 异常同样不得打断调度
             self._emit(ServerChanPushFailed("DeliveryFailed"))
 
